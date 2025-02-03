@@ -1,0 +1,5 @@
+Summary Table
+Parameter	Relevance	Impact	Guideline
+nt	Training data for codebooks	Poor training degrades accuracy; sufficient nt improves recall by reducing quantization error.	Use 10x–100x the number of codewords per subspace.
+nb	Number of database vectors	Larger datasets benefit more from PQ compression but require high-quality training and tuning.	Ensure nt is proportional to nb. Consider clustering (IVF) for very large datasets.
+nq	Number of query vectors	Affects throughput and accuracy benchmarking. Too few queries may not reflect real performance.	Use at least 1000 queries for benchmarking; test realistic workloads for high nq

@@ -1,0 +1,23 @@
+- Graph Construction:
+
+M (number of neighbors): Higher values improve accuracy but increase memory usage and construction time.
+efConstruction (connectivity): Larger values improve the graph's quality and accuracy but increase build time.
+
+- Search Efficiency:
+
+efSearch (candidate list size): 
+Higher values improve recall at the cost of increased search time.
+
+- Dataset Size and Complexity:
+
+Small datasets (nb in tens of thousands): 
+Lower M and efConstruction can suffice for acceptable performance.
+Large datasets (nb in millions): Higher M and efConstruction are required for accuracy, but memory and compute resources become critical.
+
+- Training Data (nt):
+
+Ensure training data represents the full data distribution to avoid poor clustering or quantization.
+
+- Query Load (nq):
+
+Balance nq and efSearch to achieve desired throughput while maintaining acceptable recall.

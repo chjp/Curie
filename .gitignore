@@ -1,0 +1,7 @@
+*.pyc
+baselines/openhands/session_cache
+baselines/openhands/workspace
+.aws_creds
+baselines/autobuild/.OAI_CONFIG_LIST
+proto1/setup/env.sh
+baselines/openhands/config.toml

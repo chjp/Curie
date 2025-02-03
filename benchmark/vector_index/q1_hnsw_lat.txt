@@ -1,0 +1,14 @@
+The starter file can be found under "/starter_file/faiss"
+
+Instructions: 
+1. Set up the environment. 
+
+2. Please download the sift1M dataset from ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. 
+
+3. Read /starter_file/faiss/benchs/bench_hnsw.py. You will use this script for testing the HNSW index with SIFT1M dataset. Make sure to provide all input arguments required by the file. There are 3 of them. 
+
+Question: 
+
+What is the relationship between query latency for the SIFT1M dataset and efSearch values with the HNSW index? Use a fixed value of k=10, M=32, efConstruction=40. 
+
+

@@ -1,0 +1,12 @@
+The starter file can be found under "/starter_file/faiss"
+
+Instructions: 
+1. Set up the environment. 
+
+2. Please download the sift1M dataset from ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. 
+
+3. Read /starter_file/faiss/benchs/bench_hnsw.py. You will use this script for testing the HNSW index with SIFT1M dataset. Make sure to provide all input arguments required by the file. There are 3 of them. You are free to modify these scripts if needed.
+
+Question: 
+
+What is the effect of parallelism (via omp_set_num_threads. You need to modify bench_hnsw.py to accept and use this parameter properly) on recall and latency for the SIFT1M dataset with a fixed efSearch=100, k=10, M=32, efConstruction=40

@@ -1,0 +1,15 @@
+Expected outcome:
+
+larger d = higher recall, latency and memory
+larger nt = higher recall. same latency and memory
+larger nb = higher latency, recall not sure cannot compare, memory same
+larger nq = higher latency, memory and recall no change
+
+Q: what you found was not observed?
+
+What we found instead:
+
+larger d = consistently high/higher recall, higher memory, higher latency
+larger nt = consistently high/higher recall, same memory, higher latency
+larger nb = consistently high recall, higher memory, higher latency
+larger nq = consistently high/higher recall, same memory, higher latency

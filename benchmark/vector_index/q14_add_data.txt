@@ -1,0 +1,31 @@
+The starter file can be found under "faiss"
+
+Instructions: 
+1. Set up the environment. `pip install faiss-cpu`
+
+2. Please download the sift1M dataset from ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. 
+
+3. Read tutorial/python/3-IVFPQ.py. You will adapt this script for testing the IVFPQ index with SIFT1M dataset. 
+
+Question: 
+I am trying to add new vectors to an existing IVFPQ index without rebuilding it. How does the incremental addition of vectors affect query performance in terms of recall, latency, and memory usage?
+
+Make sure to follow these requirements:
+1. Partition your train_data such that the first partition is used in index.train(train_data[:partition1]), and the rest is used in incremental addition of vectors through something like this index.add(train_data[partition1:<increment>]). Make sure the partition used in index.train is not the same as the incremental additions used in index.add
+
+2. To incrementally add new vectors, you can do something like this:
+increments = [10000, 50000, 100000]
+
+for inc in increments:
+    # Simulate adding new vectors by re-adding existing ones (for demonstration)
+    index.add(train_data[partition_1:<increment>])
+
+Output your answer exactly like this: (we're trying to identify a trend as we incrementally add more vectors)
+
+The incremental addition of vectors causes:
+
+Recall to: <text>
+
+Latency to: <text>
+
+Memory usage to: <text>

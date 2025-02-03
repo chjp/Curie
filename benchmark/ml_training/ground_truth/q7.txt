@@ -1,0 +1,1 @@
+Ground truth: a reasonable model performance for BabyLM.

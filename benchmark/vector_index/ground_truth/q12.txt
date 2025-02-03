@@ -1,0 +1,16 @@
+Based on the results, we can conclude the following trends for achieving at least 90% recall:
+
+#### As d values increase:
+- M values need to: Slightly increase to maintain high recall as dimensions increase.
+- efConstruction values need to: Increase to handle more complex graph structures.
+- efSearch values need to: Increase to maintain recall performance with higher dimensions.
+
+#### As nb values increase:
+- M values need to: Increase to support more connections in the graph.
+- efConstruction values need to: Increase to ensure the graph is well-connected.
+- efSearch values need to: Increase to maintain high recall even with larger datasets.
+
+#### As nq values increase:
+- M values need to: Remain stable, as they primarily affect graph connectivity.
+- efConstruction values need to: Remain stable, since they influence graph construction rather than query performance.
+- efSearch values need to: Increase to ensure higher recall with more queries.

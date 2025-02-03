@@ -1,0 +1,47 @@
+Task description:
+Predict house prices using tabular features like location, size, and other property attributes. Your goal is get the best prediction accuracy possible.
+
+Instructions:
+- Checkout the code dependency and set up the environment:
+```
+cd /starter_file/MLAgentBench
+pip install -e .
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia -y -q
+pip install -q -r requirements.txt
+```
+
+- Install Kaggle
+```
+export KAGGLE_CONFIG_DIR=/starter_file/MLAgentBench/MLAgentBench/.kaggle
+pip install kaggle
+sudo apt-get install unzip -y
+```
+
+- Refer to the benchmark question under `MLAgentBench/benchmarks/house-price/`.
+```
+cd MLAgentBench/benchmarks/house-price
+```
+
+- Prepare the dataset, if `train.csv`, `test.csv` does not exist under env/. You can do this by downloading the dataset:
+```
+cd scripts
+python prepare.py
+cd ..
+```
+
+
+Here is your task:
+- Go through the env/data_description.txt file to understand the data and all the features. You can summarize it in your research logs to keep track of what all you have to do.
+- Then modify the provided env/train.py script to train a model on cpu and iterate over different models or feature selections to reach lowest Mean absolute error (MAE). You MUST "cat" to read the script and then modify it. You may find it easier to directly overwrite the contents of the file too by "cat <<EOT >" You must execute it by going into the env/ directory:
+```
+cd env
+python train.py
+cd .. 
+```
+- Evaluate the model performance via:
+```
+cd scripts
+python eval.py
+cd ..
+```
+- Report the training model along with its configurations that gives the best performance (the smallest MAE).

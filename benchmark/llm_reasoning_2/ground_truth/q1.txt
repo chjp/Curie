@@ -1,0 +1,15 @@
+"Increasing the number of reasoning steps in a Chain of Thought (CoT) prompt will lead to higher accuracy in Large Language Models (LLMs) up to a saturation point. When using gpt-4o-mini &auto_cot
+
+Example:
+
+Accuracy for dataset
+Gsm8k
+Add 1 step:92.6 (5 steps in total)
+Add 2 steps:92.8
+Add 3 steps:93.5
+Last letters
+Add 1 step:84.9 (5 steps in total)
+Add 2 steps:92.2
+Add 3 steps:93.2
+Add 4 steps:93.2
+"

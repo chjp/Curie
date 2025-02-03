@@ -1,0 +1,7 @@
+efConstruction or M increase:
+- recall, memory, latency increase
+
+efSearch increase:
+- recall, latency increase. Memory negligible change
+
+`efSearch` is most sensitive to recall improvements and latency increases during querying. `M` heavily influences memory usage and latency during both construction and querying. `efConstruction` impacts the recall and latency during construction.

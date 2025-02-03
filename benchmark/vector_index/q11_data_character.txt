@@ -1,0 +1,18 @@
+The starter file can be found under "faiss"
+
+Instructions: 
+1. Set up the environment using `pip install faiss-cpu`.
+
+2. Please use `np.random.random` to construct normal distribution synthetic dataset Refer to `faiss/tutorial/python/1-Flat.py` for code.
+
+3. Read faiss/benchs/bench_hnsw.py. You will use this script for testing the HNSW index with the synthetic dataset. You will need to adapt the script to be able to use this synthetic dataset.
+
+Question: 
+
+How does the synthetic data characteristics (data size, mean, variance) affect the index HNSW performance in terms of recall?
+
+Output your answer exactly like this:
+
+Effect on incresing data size: <text>
+Effect on incresing mean: <text>
+Effect on increasing variance: <text>

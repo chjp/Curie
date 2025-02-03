@@ -1,0 +1,32 @@
+The starter file can be found under "faiss"
+
+Instructions: 
+1. Set up the environment. `pip install faiss-cpu`
+
+2. Please download the sift1M dataset from ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. 
+
+3. Read faiss/benchs/bench_hnsw.py and  faiss/benchs/bench_index_flat. You will use this script for testing the HNSW index with SIFT1M dataset. Make sure to provide all input arguments required by the file.  
+
+
+Question:  
+
+How can you configure HNSW optimally to meet varying query requirements with strict latency constraints (specifically, test this for 5ms, 1ms, 0.1ms, and 0.05ms) while maintaining a recall of 0.95?
+
+Output your answer exactly like this:
+
+To maintain a recall of 0.95 as latency requirements get stricter: 
+- M values need to: <text>
+- efConstruction values need to: <text>
+- k values need to: <text>
+
+Concrete configuration for achieving 0.95 recall at 5ms latency requirement:
+- M=<val>, efConstruction=<val>, k=<val>
+
+Concrete configuration for achieving 0.95 recall at 1ms latency requirement:
+- M=<val>, efConstruction=<val>, k=<val>
+
+Concrete configuration for achieving 0.95 recall at 0.1ms latency requirement:
+- M=<val>, efConstruction=<val>, k=<val>
+
+Concrete configuration for achieving 0.95 recall at 0.05ms latency requirement:
+- M=<val>, efConstruction=<val>, k=<val>

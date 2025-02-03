@@ -1,0 +1,11 @@
+1. The starter file can be found under "/starter_file/faiss".
+
+Instructions: 
+1. Set up the environment. 
+
+2. Please download the sift1M dataset from ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. 
+
+3. Some benchmark starter files can be found under `faiss/benchs`
+
+Question: 
+What are the recall-latency trade-offs for an IVF index as the number of probes (nprobe) increases? For ivf, use /starter_file/faiss/benchs/bench_ivf_fastscan.py. You need to modify it to accept and use this parameter properly, make minimal edits.

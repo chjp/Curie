@@ -1,0 +1,2 @@
+Check that multiple nprobes are actually measured in logs
+As nprobe increases, recall improves, so does the latency.

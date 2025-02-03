@@ -1,0 +1,34 @@
+Ground truth: a reasonable SMAPE score that should not be less than 5
+
+#### Control Group:
+- **Linear Regression**: 
+  - SMAPE scores from two separate runs were consistent at 0.25. This indicates that the Linear Regression model with default settings achieved a stable baseline performance.
+
+#### Experimental Group Partition 1:
+- **Random Forest**: 
+  - SMAPE scores varied significantly with some configurations achieving better scores than the control group, but others performed worse.
+  - The scores ranged from 4.6 to 30.5, indicating potential for further tuning.
+
+- **XGBoost**: 
+  - Consistently high SMAPE scores around 66.64, suggesting issues with model configuration or data handling.
+
+- **LSTM**: 
+  - SMAPE scores were not available, indicating potential implementation issues.
+
+- **Linear Regression with PCA/SelectKBest**:
+  - Extremely low SMAPE scores close to zero, likely due to overfitting or misconfiguration.
+
+#### Experimental Group Partition 2:
+- **Random Forest**: 
+  - The SMAPE scores improved with an increase in the number of estimators. Scores ranged from 13.33 to 31.21.
+
+- **XGBoost**: 
+  - Remained consistently high at 66.64, indicating persistent issues.
+
+- **LSTM**: 
+  - Extremely high SMAPE scores, ranging from 183.86 to 200, indicating significant issues with the model implementation or data handling.
+
+### Conclusion
+The experiments illustrate that different models and configurations have varying impacts on the prediction of Parkinson's disease progression, supporting the hypothesis. However, some models, particularly XGBoost and LSTM, require further refinement and tuning to achieve meaningful results.
+
+The Random Forest model showed the most promise with specific configurations outperforming the control. Linear Regression with certain feature selection techniques exhibited signs of overfitting, suggesting the need for better data partitioning or model validation.

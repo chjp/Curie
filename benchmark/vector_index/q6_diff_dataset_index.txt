@@ -1,0 +1,12 @@
+The starter file can be found under "faiss"
+
+Instructions: 
+1. Set up the environment. 
+
+2. Please download the sift dataset from http://corpus-texmex.irisa.fr/ if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. We want ANN_SIFT10K	and ANN_SIFT1M only. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. The download link for the former is ftp://ftp.irisa.fr/local/texmex/corpus/siftsmall.tar.gz while the latter is ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz 
+
+3. Some benchmark starter files can be found under `faiss/benchs`
+
+Question: 
+
+What is the relationship between dataset size and index-building time for different FAISS index types (e.g., IVF, HNSW)? For hnsw, the default settings are a fixed k value of 10, M value of 32, and efConstruction value of 40. For ivf, use /starter_file/faiss/benchs/bench_ivf_fastscan.py. hnsw should be the control group, and ivf the experimental group.

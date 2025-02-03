@@ -1,0 +1,12 @@
+The starter file can be found under "/starter_file/faiss"
+
+Instructions: 
+1. Set up the environment. 
+
+2. Please download the sift1M dataset from ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz if it does not exist, and unzip it to the subdirectory sift1M, and move it to `data` directory. Make sure while downloading that quiet flag is used (e.g., --no-verbose for wget), otherwise we will exceed context length. 
+
+3. Read /starter_file/faiss/benchs/bench_hnsw.py. You will use this script for testing the HNSW index with SIFT1M dataset. Make sure to provide all input arguments required by the file. There are 3 of them. 
+
+Question: 
+
+What is the highest recall that can be achieved on the SIFT1M dataset with an HNSW index while keeping query latency under 5ms? Report the optimal configuration. Use a fixed k value of 10, use varying M values of 16, 24, 32, use varying efConstruction values of 40, 50, 60. In total, there should be 9 combinations to test.

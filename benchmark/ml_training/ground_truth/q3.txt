@@ -1,0 +1,12 @@
+Ground truth: a reasonable MCRMSE similar or smaller to the following. 
+
+
+#### Control Group (Baseline LSTM)
+- **Result 1**: MCRMSE of 0.3832837868230514
+- **Result 2**: MCRMSE of 0.37315341117542977
+
+#### Experimental Group Partition 1 (Transformer with various hyperparameters)
+- **Result 1 & 2**: MCRMSE of 0.4611655674019148
+
+#### Experimental Group Partition 2 (Stemming and Lemmatization)
+- **Result 1 & 2**: MCRMSE of 0.4611655674019148

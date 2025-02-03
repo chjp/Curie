@@ -1,0 +1,41 @@
+Task description:
+Vectorization is a task measuring the improvement in processing speed for vectorized computations in image data.
+
+Instructions:
+- Checkout the code dependency and set up the environment:
+```
+cd /starter_file/MLAgentBench
+pip install -e .
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia -y -q
+pip install -q -r requirements.txt
+```
+
+- Install Kaggle
+```
+export KAGGLE_CONFIG_DIR=/starter_file/MLAgentBench/MLAgentBench/.kaggle
+pip install kaggle
+sudo apt-get install unzip -y
+```
+
+- Refer to the benchmark question under `MLAgentBench/benchmarks/vectorization/`.
+```
+cd MLAgentBench/benchmarks/vectorization
+```
+
+Here is your task:
+- Given a script env/train.py, execute it to see the current execution speed and then try to improve it with using only the numpy library and vectorisation in the forward function for lines from 105 to 123 (read the file env/train-read-only.py first to obtain an understanding of where the lines are, this is IMPORTANT since train.py itself may be modified already and the line numbers messed up). Understand the train.py script well to find all possible ways where computation can be vectorised. Then, store the run time in a submission.csv as shown in train.py.
+```
+cd env
+python train.py
+cd .. 
+```
+
+- Finally, evaluate the model performance via:
+```
+cd scripts
+python eval.py
+cd ..
+```
+
+Goal: 
+The goal of this task is to improve the execution speed of the given script `env/train.py`. Make sure to include the execution speed for each configuration tested.

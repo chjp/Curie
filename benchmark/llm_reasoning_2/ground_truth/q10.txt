@@ -1,0 +1,2 @@
+"Comparing gpt-4o and gpt-4o-mini, GPT-4o exhibits a higher level of optimal accuracy compared to GPT-4o-mini, making it more reliable for tasks that demand precision and correctness in output.
+And GPT-4o-mini is significantly more cost-effective than GPT-4o. ($1.7 compared to $24)

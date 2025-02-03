@@ -1,0 +1,34 @@
+The starter file can be found under "/starter_file/faiss"
+
+Instructions: 
+1. Set up the environment. 
+
+2. You can construct the synthetic dataset using `from faiss.contrib.datasets import SyntheticDataset`, example: `ds = SyntheticDataset(d, nt, nb, nq)`.
+
+3. Read /starter_file/faiss/benchs/bench_hnsw.py. You will need to adapt this script for testing the HNSW index with various synthetic datasets.
+
+Question: 
+
+For different constructed SyntheticDataset, how does d, nt, nb, nq affects the index performance (recall, memory and latency) for PQ?
+
+Output your answer exactly like this:
+
+Effect of increasing d on:
+- recall: <text>
+- memory: <text>
+- latency: <text>
+
+Effect of increasing nt on:
+- recall: <text>
+- memory: <text>
+- latency: <text>
+
+Effect of increasing nb on:
+- recall: <text>
+- memory: <text>
+- latency: <text>
+
+Effect of increasing nq on:
+- recall: <text>
+- memory: <text>
+- latency: <text>

@@ -1,0 +1,33 @@
+The starter file can be found under "/starter_file/faiss"
+
+Instructions: 
+1. Set up the environment. 
+
+2. You can construct the synthetic dataset using `from faiss.contrib.datasets import SyntheticDataset`, example: `ds = SyntheticDataset(d, nt, nb, nq)`.
+
+3. Read /starter_file/faiss/benchs/bench_hnsw.py. You will use this script for testing the HNSW index. Make sure to provide all input arguments required by the file. There are 3 of them. 
+
+Question: 
+
+What is the relationship or trend in the HNSW parameters (M, efConstruction, efSearch) required to achieve at least 90% recall as we increase dataset dimensions (d), size (nb), or query count (nq) in SyntheticDatasets?
+
+Test the following d values: 32, 64
+Test the following nb values: 200000, 100000
+Test the following nq values: 500, 1000
+
+Output your answer exactly like this:
+
+To achieve at least 90% recall as d values increase:
+- M values need to: <text>
+- efConstruction values need to: <text>
+- efSearch values need to: <text>
+
+To achieve at least 90% recall as nb values increase:
+- M values need to: <text>
+- efConstruction values need to: <text>
+- efSearch values need to: <text>
+
+To achieve at least 90% recall as nq values increase:
+- M values need to: <text>
+- efConstruction values need to: <text>
+- efSearch values need to: <text>

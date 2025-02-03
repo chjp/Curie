@@ -1,0 +1,3 @@
+"When using gpt-4o-mini, the optimal number of reasoning steps for 
+Gsm8k,it's more than adding 3 steps. For Last_letters, it's adding 3 steps. Because for last_letters, the accuracy of adding 3 steps is equal to the accuracy of adding 4 steps
+

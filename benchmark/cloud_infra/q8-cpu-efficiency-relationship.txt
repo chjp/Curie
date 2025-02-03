@@ -1,0 +1,13 @@
+How does CPU efficiency scale differ with these different AWS EC2 instance types, i.e., t3.medium vs t3.large vs. c5.large vs c5.xlarge, under a mixed workload? 
+
+To address this, conduct the following:
+1. Test and Rank: Test all 4 instance types under a predefined mixed workloads (detailed below). Rank the instance types based on CPU efficiency, defined as the amount of work completed per unit of CPU resource utilized.
+2. Inter-Family Comparison: Compare the ranked results and relationships across the instances in the c5 and t3 families. Identify and explain differences in performance trends between the two families (e.g., does the c5 family consistently outperform t3 due to newer CPU architecture or lack of throttling?).
+
+Here are the details of the mixed workload. All should be running simultaneously:
+- Compute-bound task: sysbench cpu --cpu-max-prime=1000000 --time=30 run
+- Memory-intensive task: sysbench memory --memory-block-size=1M --memory-total-size=10000G --time=30 run
+
+Your task is to run experiments for these 4 instance types using these scripts, analyze how the mixed workload impacts performance, and identify causal relationships. Do not terminate until you produce an experimentally backed, comprehensive, and interpretable conclusion.
+
+Make sure to review Cloud/workload setup and code in the following first (most of the code including compute-bound task is already provided, but you may need to do slight modifications to include the memory-intensive task): /starter_file/cloud_infra/cpu_workload/sysbench_workload

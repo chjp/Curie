@@ -1,0 +1,19 @@
+"c5.4xlarge or c5.2xlarge
+
+**Control Group (c5.large):**
+- **Run 1:** 99th Percentile Latency: 143 ms
+- **Run 2:** 99th Percentile Latency: 137 ms
+
+**Experimental Group:**
+- **c5.xlarge:**
+  - **Run 1:** 99th Percentile Latency: 140 ms
+  - **Run 2:** 99th Percentile Latency: 137 ms
+- **c5.2xlarge:**
+  - **Run 1:** 99th Percentile Latency: 139 ms
+  - **Run 2:** 99th Percentile Latency: 138 ms
+- **c5.4xlarge:**
+  - **Run 1:** 99th Percentile Latency: 134 ms
+  - **Run 2:** 99th Percentile Latency: 136 ms
+- **c5.9xlarge:**
+  - **Run 1:** 99th Percentile Latency: 157 ms
+  - **Run 2:** 99th Percentile Latency: 160 ms"

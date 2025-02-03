@@ -1,0 +1,7 @@
+{
+    "benchmark_specific_context": "none",
+    "question_filename": "/benchmark/cloud_infra/cpu_workload_ques/level5/exp_pipeline_question_format/question.txt",
+    "log_filename": "misc/log-temp.log",
+    "supervisor_system_prompt_filename": "prompts/exp-supervisor.txt",
+    "control_worker_system_prompt_filename": "prompts/exp-controlled-setup-worker.txt"
+}

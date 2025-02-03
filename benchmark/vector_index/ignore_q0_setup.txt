@@ -1,0 +1,4 @@
+The starter file can be found under "/starter_file/faiss"
+
+Follow the instructions to setup the environment. 
+Run the smallest and easiest benchmark.
