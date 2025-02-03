@@ -5,7 +5,7 @@ FROM continuumio/miniconda3:latest
 WORKDIR /exp_agent
 
 # Copy the current directory into the container
-COPY ./proto1 /exp_agent
+COPY ./src /exp_agent
 COPY ./benchmark /benchmark
 COPY ./starter_file /starter_file
 COPY ./eval_metadata /eval_metadata
