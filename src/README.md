@@ -5,7 +5,7 @@ We will run our agent within a docker container.
 
 1. Build the container image. Whenever changes have been made: delete the current mounted volume (after backing up necessary data, of course), and rebuild the container image.
 ```bash
-cd langgraph-exp-agent/proto1
+cd Curie/src
 conda env create -f environment.yml
 sudo docker stop exp-agent-container-instance
 sudo docker rm exp-agent-container-instance
@@ -17,6 +17,7 @@ sudo docker build -t exp-agent-image-test -f ExpDockerfile_llm_reasoning_2 ..
 ```bash
 sudo docker run --cpus=4 --memory=8g --network=host -it --name e2 exp-agent-image-test
 conda activate langgraph
+source setup/env.sh
 python3 main.py configs/base_config.json
 # if cloud-infra related questions, use this command INSTEAD, it will essentially add more context to prompt (make sure to populate cloud_helper_related/.aws_creds with the appropriate credentials):
 python3 main.py configs/cloud_config.json

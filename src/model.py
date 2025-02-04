@@ -1,6 +1,7 @@
 from langchain_openai import AzureChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import time
+import os
 from openai import BadRequestError
 
 GPT_4O_MAX_CHARS = 128000 * 4 - 10000 # an approximation based on gpt-4o context length, which is 128000 tokens, and also because 4 char is around 1 token, we minus 10000 for safety
@@ -58,35 +59,69 @@ def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2
         try:
             # Case 1: all messages add up to over the context limit: we just prune a set amount of messages in the middle
             # Specifically, we prune 40% of messages among the list of messages, if when adding up all message's individual lengths, the total length exceeds the context limit:
-            total_length = sum([len(message.content) for message in messages])
+            total_length = sum([len(message) for message in messages])
             if total_length > GPT_4O_MAX_CHARS:
-                print(f"Total message length will exceed context limit. Pruning messages.")
+                print(f"Total message length will exceed context limit. Total length of messages now: {total_length}. Pruning messages.")
                 # Prune 40% of messages in between the messages list:
-                messages = messages[:len(messages) // 3] + messages[-len(messages) // 3:]
+
+                messages_to_prune = messages[len(messages) // 3: -len(messages) // 3]
+
+                # Iterate from the back of messages_to_prune, if we see a ToolMessage, we keep the message that comes before it. If we see any other message, we prune it. 
+                j = len(messages_to_prune) - 1
+                while j >= 0:
+                    if messages_to_prune[j].type == "tool":
+                        j -= 2
+                    else:
+                        messages_to_prune.pop()
+                        j -= 1
+                        
+                messages = messages[:len(messages) // 3] + messages_to_prune + messages[-len(messages) // 3:]
+
+
+                total_length = sum([len(message) for message in messages])
+                print(f"Pruning complete... Total length of messages now: {total_length}.")
 
             # Case 2: Split the last message into chunks: (since this is the only possibility for exceeding GPT-4o max context length limits)
             splitted_text = text_splitter_gpt_4o(messages[-1].content, GPT_4O_MAX_CHARS)
             # if we did exceed, we will need to iteratively pass the input into the LLM:
             if len(splitted_text) > 1: # my observation is that huge text chunks usually come only from execute_shell_command
+
+                splitted_text = text_splitter_gpt_4o(messages[-1].content, GPT_4O_DEFINED_CHAR_LIMIT)
+
                 summarized_text = ""
                 print(f"Last message length will exceed defined context limit. Splitting text into {len(splitted_text)} chunks")
                 for i, text_chunk in enumerate(splitted_text):
                     print(f"Processing chunk {i + 1} of {len(splitted_text)}")
                     # Ask our summarizer gpt-4o model to summarize chunks:
+
+                    print("Chunk length before summarize:", len(text_chunk))
+
                     response = summarizer_model.invoke("Summarize the following text. Be concise, but leave the original formatting/structure intact. A method to do this is to just prune many lines that may not be important. Don't output anything other than the summarized text. Here is the text: \n" + text_chunk)
+
+                    print("Summarizer Response:", response)
+
                     summarized_text += response.content
+
+                    print("Chunk length after summarize:", len(response.content))
+
                 # Reassign the last message content to the summarized text:
                 messages[-1].content = summarized_text
 
             # Case 3: if the last message exceeds our own defined limit (high leeway), we summarize it:
             splitted_text = text_splitter_gpt_4o(messages[-1].content, GPT_4O_DEFINED_CHAR_LIMIT)
             if len(splitted_text) > 1:
+                print("Chunk length before summarize:", len(messages[-1].content))
                 print(f"Last message length will exceed defined context limit of {GPT_4O_DEFINED_CHAR_LIMIT}. Summarizing text...")
                 messages[-1].content = summarizer_model.invoke("Summarize the following text. Be concise, but leave the original formatting/structure intact. A method to do this is to just prune many lines that may not be important. Don't output anything other than the summarized text. Here is the text: \n" + messages[-1].content).content
+
+                print("Summarizer Response:", messages[-1].content)
+
+                print("Chunk length after summarize:", len(messages[-1].content))
 
             return model.invoke(messages)
 
         except BadRequestError as e:
+            print(f"Bad request error: {e}")
             attempt += 1
             if attempt < max_retries:
                 print(f"Retrying in {delay} seconds...")
