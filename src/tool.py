@@ -5,6 +5,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.prebuilt import InjectedStore
 from langgraph.prebuilt import InjectedState
 import uuid
+import time
 from modified_deps.langchain_bash.tool import ShellTool
 from typing import Optional, Type, Dict, Any
 
@@ -26,6 +27,26 @@ def test_search_tool(a: Annotated[str, "search string"]) -> str:
     return "University of Michigan!"
 
 shell_tool = ShellTool(timeout=1200)
+
+@tool
+def codeagent_openhands(prompt: Annotated[str, "The prompt to generate code for"]) -> str:
+    """Generate script for a given prompt."""
+
+    # given the code workspace 
+    # wait; return log and result script 
+    # example command: python -m openhands.core.main -f prompt 2>&1 | tee -a /home/ubuntu/Curie/logs/{time}_logging.txt
+    # TODO: remove the hardcoded path
+    # TODO: integrate openhands installation into the framework
+    try: 
+        shell_tool.run({"commands": ["export LOG_ALL_EVENTS=true"]})
+        output = shell_tool.run({"commands": [f"python -m openhands.core.main -t '{prompt}' 2>&1 | tee -a /starter_file/{int(time.time())}_logging.txt"]})
+        print(f"Output: {output}")
+    except BaseException as e:
+        print(f"Error generating code for prompt: {prompt}")
+        print(f"Error: {repr(e)}")
+        return f"Failed to generate code for prompt: {prompt}\nError: {repr(e)}"
+    return f"Code generated for prompt: {prompt}\nCode: {output}"
+
 
 # Note: shell_tool itself can in theory be passed into the agent as a tool already https://python.langchain.com/docs/integrations/tools/bash/ https://www.youtube.com/watch?v=-ybgQK0BE-I
 @tool

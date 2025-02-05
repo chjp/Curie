@@ -1,22 +1,33 @@
 # Usage instructions
 We will run our agent within a docker container.
 
+
 0. Install docker: https://docs.docker.com/engine/install/ubuntu/
 
 1. Build the container image. Whenever changes have been made: delete the current mounted volume (after backing up necessary data, of course), and rebuild the container image.
+
+
 ```bash
 cd Curie/src
 conda env create -f environment.yml
-sudo docker stop exp-agent-container-instance
-sudo docker rm exp-agent-container-instance
-sudo docker volume rm exp-agent-container-data
-sudo docker build -t exp-agent-image-test -f ExpDockerfile_llm_reasoning_2 ..
+sudo docker stop e4
+sudo docker rm e4
+sudo docker volume rm e4
+docker ps -a --format "{{.Names}}" | grep '^openhands-runtime' | xargs -r docker rm -f
+```
+
+```
+sudo docker build -t exp-agent-image-test -f ExpDockerfile_OpenHands ..
+sudo docker build  --no-cache   --progress=plain   -t exp-agent-image-test -f ExpDockerfile_OpenHands ..
 ```
 
 2. Run and exec into container and begin running experiments. We are using a volume mount to persist the copied agent directory into ``exp-agent-container-data``.
 ```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock --cpus=4 --memory=8g --network=host -it --name e7 exp-agent-image-test bash
+sed -i '457i \          "organization": "499023",' /root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/lib/python3.12/site-packages/litellm/llms/azure/azure.py
+
 sudo docker run --cpus=4 --memory=8g --network=host -it --name e2 exp-agent-image-test
-conda activate langgraph
+conda activate curie
 source setup/env.sh
 python3 main.py configs/base_config.json
 # if cloud-infra related questions, use this command INSTEAD, it will essentially add more context to prompt (make sure to populate cloud_helper_related/.aws_creds with the appropriate credentials):

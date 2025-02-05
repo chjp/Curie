@@ -1,0 +1,86 @@
+# Base image with Python and Conda
+FROM continuumio/miniconda3:latest
+
+# Set the working directory inside the container
+WORKDIR /exp_agent
+
+# Copy the current directory into the container
+COPY ./src /exp_agent
+COPY ./benchmark /benchmark
+# COPY ./eval_metadata /eval_metadata
+
+
+# Install dependencies from the Conda environment file
+RUN conda env create -f environment.yml && \
+    conda clean -a && \
+    conda init bash && \
+    /bin/bash -c "source ~/.bashrc && conda activate curie"
+
+RUN /opt/conda/bin/conda init bash
+
+# Update the package list and install vim
+RUN apt-get update && apt-get install -y vim
+
+# Set up OpenHands
+ 
+# Set environment variables to avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Node.js and Poetry via Conda
+# FROM continuumio/miniconda3
+
+RUN conda install -y -c conda-forge python=3.12 nodejs poetry  
+
+# Update package index and install dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release
+
+# Create the keyrings directory and add Docker's official GPG key
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# Set up the Docker repository
+RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
+    | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Update package index again and install Docker Engine
+RUN apt-get update && apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-compose-plugin \
+    docker.io 
+ 
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+    
+COPY ./src /exp_agent
+COPY ./benchmark /benchmark
+COPY ./starter_file /starter_file
+
+RUN cd /starter_file/OpenHands && cat Makefile || echo "Makefile not found!"
+RUN cd /starter_file/OpenHands && make build
+
+# Activate the Conda virtual environment and install dependencies
+RUN /bin/bash -c "source /root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/bin/activate && \
+    pip install langchain-core==0.3.29 langgraph==0.2.52"
+
+RUN mkdir -p /workspace
+RUN mkdir -p /temp/logs/
+
+# Set PATH to activate the Conda environment automatically in the container
+ENV PATH=/opt/conda/envs/langgraph/bin:$PATH
+
+# Ensure bash is the default shell
+SHELL ["/bin/bash", "-c"]
+
+# Default command
+# CMD ["bash"]
+# Keep container running
+CMD ["tail", "-f", "/dev/null"]

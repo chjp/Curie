@@ -1,3 +1,7 @@
+logs
+config.toml
+code_logging
+src/config.toml
 *.pyc
 baselines/openhands/session_cache
 baselines/openhands/workspace

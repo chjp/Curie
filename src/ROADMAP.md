@@ -1,0 +1,11 @@
+
+- [ ] install the openhands env inside our docker
+- [ ] move necessary files to outside?
+- [ ] stream the logging
+- [ ] cost estimator
+- [ ] remove the need to remove and restart the docker
+- [ ] continue previous experiments
+- [ ] human interruption
+- [ ] OAI Deep research will ask for clarification questions
+- [ ] clean up my docker file
+- [ ] clean up the readme
