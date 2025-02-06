@@ -17,7 +17,10 @@ def create_gpt_4(tools=None) -> AzureChatOpenAI:
     )
 
     if tools:
-        llm = llm.bind_tools(tools)
+        llm = llm.bind_tools(
+            tools, 
+            parallel_tool_calls=False # Avoid multi_tool_use.parallel in GPT-4o
+        )
 
     return llm
 
@@ -59,7 +62,7 @@ def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2
         try:
             # Case 1: all messages add up to over the context limit: we just prune a set amount of messages in the middle
             # Specifically, we prune 40% of messages among the list of messages, if when adding up all message's individual lengths, the total length exceeds the context limit:
-            total_length = sum([len(message) for message in messages])
+            total_length = sum([len(message.content) for message in messages])
             if total_length > GPT_4O_MAX_CHARS:
                 print(f"Total message length will exceed context limit. Total length of messages now: {total_length}. Pruning messages.")
                 # Prune 40% of messages in between the messages list:
@@ -78,7 +81,7 @@ def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2
                 messages = messages[:len(messages) // 3] + messages_to_prune + messages[-len(messages) // 3:]
 
 
-                total_length = sum([len(message) for message in messages])
+                total_length = sum([len(message.content) for message in messages])
                 print(f"Pruning complete... Total length of messages now: {total_length}.")
 
             # Case 2: Split the last message into chunks: (since this is the only possibility for exceeding GPT-4o max context length limits)
