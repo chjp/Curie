@@ -79,6 +79,12 @@ graph_builder.add_node("llm_verifier", verifier_graph)
 # Create LLM patcher graph:
 verifier_graph = verifier.create_PatchVerifierGraph(State, store, metadata_store)
 graph_builder.add_node("patch_verifier", verifier_graph)
+# Create Analyzer graph:
+verifier_graph = verifier.create_AnalyzerGraph(State, store, metadata_store)
+graph_builder.add_node("analyzer", verifier_graph)
+# Create Concluder graph:
+verifier_graph = verifier.create_ConcluderGraph(State, store, metadata_store)
+graph_builder.add_node("concluder", verifier_graph)
 # Add edges: (we only need to define the higher level graph edges, the internal graphs have edges taken care of already)
 graph_builder.add_edge(START, "supervisor") # start edge: we always start from the supervisor who will create some kind of plan based on user input
 graph_builder.add_edge("supervisor", "scheduler") # supervisor will always call the scheduler to determine the next agent
@@ -86,6 +92,8 @@ graph_builder.add_edge(experimental_worker_name, "scheduler") # worker will alwa
 graph_builder.add_edge(control_worker_name, "scheduler") # worker will always call the scheduler to determine the next agent
 graph_builder.add_edge("llm_verifier", "scheduler") # verifier will always call the scheduler to determine the next agent
 graph_builder.add_edge("patch_verifier", "scheduler") # verifier will always call the scheduler to determine the next agent
+graph_builder.add_edge("analyzer", "scheduler") # verifier will always call the scheduler to determine the next agent
+graph_builder.add_edge("concluder", "scheduler") # verifier will always call the scheduler to determine the next agent
 graph_builder.add_conditional_edges("scheduler", lambda state: state["next_agent"]) # Inspired partly from: https://langchain-ai.github.io/langgraph/tutorials/multi_agent/hierarchical_agent_teams/#add-layers
 
 graph = graph_builder.compile(checkpointer=memory)
