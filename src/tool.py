@@ -542,6 +542,96 @@ class RemoveExpPartitionTool(BaseTool):
         wrote_list.append(plan_id)
         self.metadata_store.put(sched_namespace, memory_id, wrote_list)
 
+class ArchiveExpPlanInput(BaseModel):
+    plan_id: str = Field(
+        None,
+        description="Plan ID of the specific experimental plan from storage."
+    )
+
+class ArchiveExpPlanTool(BaseTool):
+    name: str = "exp_plan_archive"
+    description: str = "Remove an existing experimental plan."
+    args_schema: Type[BaseModel] = ArchiveExpPlanInput
+    # None of the following work:
+    # https://langchain-ai.github.io/langgraph/how-tos/pass-run-time-values-to-tools/#define-the-tools_1
+    # https://github.com/langchain-ai/langchain/discussions/24906
+    # and so on..
+    store: Optional[InMemoryStore] = None  # Declare store as an optional field
+    metadata_store: Optional[InMemoryStore] = None  # Declare store as an optional field. This is for storing sched related metadata. 
+
+    def __init__(self, store: InMemoryStore, metadata_store: InMemoryStore):
+        super().__init__()
+        self.store = store
+        self.metadata_store = metadata_store
+    
+    class Config:
+        arbitrary_types_allowed = True  # Allow non-Pydantic types like InMemoryStore
+
+    def _run(
+        self, 
+        plan_id: str, 
+        run_manager: Optional[CallbackManagerForToolRun] = None
+    ) -> str:
+        """
+        Use the tool.
+        
+        Note: we are guaranteed that plan will conform to the required format
+        """
+        user_id = "admin"
+        application_context = "exp-plans" 
+        plan_namespace = (user_id, application_context) # just a random namespace name for now
+
+        # print(state["prev_agent"])
+        
+        print("Modifying existing plan...")
+
+        # Get plan from memory
+        try:
+            plan = self.store.get(plan_namespace, plan_id).dict()["value"]
+        except:
+            return "The plan does not exist."
+
+        # Remove existing plan:
+        self.store.delete(plan_namespace, plan_id)
+
+        self.del_sched_metadata(plan_id)
+
+        return "Plan removal successful."
+
+    def del_sched_metadata(self, plan_id: str):
+        user_id = "admin"
+        application_context = "exp-sched" 
+        sched_namespace = (user_id, application_context) # just a random namespace name for now
+
+        # Remove existing plan from supervisor_wrote_list:
+        memory_id = str("supervisor_wrote_list")
+        supervisor_wrote_list = self.metadata_store.get(sched_namespace, memory_id).dict()["value"]
+        new_list = []
+        for plan_id2 in supervisor_wrote_list:
+            # NOTE: currently, we ignore plan groups that are already executing in the worker.. 
+            if plan_id2 != plan_id:
+                new_list.append(plan_id2)
+        self.metadata_store.put(sched_namespace, memory_id, new_list)
+
+        # Remove existing plan from standby_exp_plan_list:
+        memory_id = str("standby_exp_plan_list")
+        standby_exp_plan_list = self.metadata_store.get(sched_namespace, memory_id).dict()["value"]
+        new_list = []
+        for plan_id2 in standby_exp_plan_list:
+            # NOTE: currently, we ignore plan groups that are already executing in the worker.. 
+            if plan_id2 != plan_id:
+                new_list.append(plan_id2)
+        self.metadata_store.put(sched_namespace, memory_id, new_list)
+
+        # Remove existing plan from supervisor_redo_partition_list:
+        memory_id = str("supervisor_redo_partition_list")
+        supervisor_redo_partition_list = self.metadata_store.get(sched_namespace, memory_id).dict()["value"]
+        new_list = []
+        for redo_details in supervisor_redo_partition_list:
+            if redo_details["plan_id"] != plan_id:
+                new_list.append(redo_details)
+        self.metadata_store.put(sched_namespace, memory_id, new_list)
+
 class EditExpPriorityInput(BaseModel):
     plan_id: str = Field(
         None,

@@ -17,7 +17,7 @@ import tool
 import exp_agent
 import worker_agent
 import settings
-import sched
+import scheduler as sched
 import verifier
 
 # import router

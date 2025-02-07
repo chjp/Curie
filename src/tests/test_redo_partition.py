@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from typing_extensions import TypedDict
 from langgraph.graph.message import add_messages
 
-import sched
+import scheduler as sched
 import tool
 from langgraph.store.memory import InMemoryStore
 
