@@ -55,7 +55,7 @@ def _create_WorkerGraph(State, store, metadata_store, memory, worker_details):
     assert len(worker_names) == 1 
     store_write_tool = tool.ExpPlanCompletedWriteTool(store, metadata_store)
     store_get_tool = tool.StoreGetTool(store)
-    tools = [tool.execute_shell_command, store_write_tool, store_get_tool] # Only tool is code execution for now
+    tools = [tool.codeagent_openhands, tool.execute_shell_command, store_write_tool, store_get_tool] # Only tool is code execution for now
     worker_node = create_Worker(tools, system_prompt_file, config_file, State, worker_names[0]) 
 
     worker_builder.add_node(worker_names[0], worker_node)

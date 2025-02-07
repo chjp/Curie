@@ -8,7 +8,7 @@ WORKDIR /exp_agent
 COPY ./src /exp_agent
 COPY ./benchmark /benchmark
 COPY ./starter_file /starter_file
-COPY ./eval_metadata /eval_metadata
+# COPY ./eval_metadata /eval_metadata
 
 # Install dependencies from the Conda environment file
 RUN conda env create -f environment.yml && \

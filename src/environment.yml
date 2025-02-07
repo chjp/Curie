@@ -1,4 +1,4 @@
-name: langgraph
+name: curie
 channels:
   - defaults
   - https://repo.anaconda.com/pkgs/main

@@ -27,6 +27,7 @@ class QCategory(Enum):
     CLOUD = "cloud"
     MLTRAINING = "mltraining"
     REASONING2 = "reasoning2"
+    TESTING = "test"
 
     def __str__(self):
         return self.value  # For proper display in argparse help text
@@ -100,21 +101,17 @@ def find_question_files(directory, pattern, questions_to_run):
     return question_files
 
 def get_log_file_openhands(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
-    if not os.path.exists(f"../eval_metadata/temp_logs/openhands/{folder_prefix}"):
-        os.makedirs(f"../eval_metadata/temp_logs/openhands/{folder_prefix}")
-    log_filename =  f"../eval_metadata/temp_logs/openhands/{folder_prefix}/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
+    if not os.path.exists(f"../logs/temp_logs/openhands/{folder_prefix}"):
+        os.makedirs(f"../logs/temp_logs/openhands/{folder_prefix}")
+    log_filename =  f"../logs/temp_logs/openhands/{folder_prefix}/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
     return os.path.abspath(log_filename) # abs filepath is fine since this refers to the host directory too. 
-
-# def get_log_file_magentic(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
-#     if not os.path.exists(f"../eval_metadata/temp_logs/magentic/{folder_prefix}"):
-#         os.makedirs(f"../eval_metadata/temp_logs/magentic/{folder_prefix}")
-#     log_filename =  f"../eval_metadata/temp_logs/magentic/{folder_prefix}/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
-#     return os.path.abspath(log_filename) # abs filepath is fine since this refers to the host directory too. 
 
 # Function to create a configuration file
 def create_config_file(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
+    log_dir = '../logs/configs'
+    # os.makedirs(log_dir, exist_ok=True)
     log_filename = f"/temp/logs/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
-    config_filename = f"../eval_metadata/configs/{folder_prefix}_config_{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.json"
+    config_filename = f"{log_dir}/{folder_prefix}_config_{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.json"
 
     if folder_prefix == "cloud_infra":
         config = {
@@ -130,7 +127,8 @@ def create_config_file(question_file, unique_id, iteration, folder_prefix="llm_r
             "question_filename": question_file,
             "log_filename": log_filename,
             "supervisor_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-supervisor.txt",
-            "control_worker_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-controlled-worker.txt",
+            # "control_worker_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-controlled-worker.txt",
+            "control_worker_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-oh-controlled-worker.txt",
         }
 
     os.makedirs(os.path.dirname(config_filename), exist_ok=True)
@@ -138,6 +136,20 @@ def create_config_file(question_file, unique_id, iteration, folder_prefix="llm_r
         json.dump(config, f, indent=4)
     print(f"Config file created: {config_filename}")
     return config_filename
+
+
+def docker_image_exists(image):
+    """Check if a Docker image exists locally."""
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image], 
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        return result.returncode == 0  # Return True if image exists
+    except Exception as e:
+        print(f"Error checking Docker image: {e}")
+        return False
+
 
 # Function to run a Docker container
 def run_docker_container(unique_id, iteration, folder_prefix="llm_reasoning"):
@@ -149,19 +161,36 @@ def run_docker_container(unique_id, iteration, folder_prefix="llm_reasoning"):
         image_name = "exp-agent-image-llm-reasoning-2"
         docker_filename = "ExpDockerfile_llm_reasoning_2"
     else:
-        image_name = "exp-agent-image"
-        docker_filename = "ExpDockerfile"
+        image_name = "exp-agent-image-test"
+        docker_filename = "ExpDockerfile_OpenHands"
 
-    subprocess.run(["sudo", "docker", "build", "-t", image_name, "-f", docker_filename, ".."], check=True)
+    if docker_image_exists(image_name):
+        print(f"Using existing Docker image: {image_name}")
+    else:
+        subprocess.run(["docker", "build", "-t", image_name, "-f", docker_filename, ".."], check=True)
 
-    print(f"Running Docker container: {container_name}")
-    host_dir = os.path.expanduser("~/langgraph-exp-agent/eval_metadata")
-    subprocess.run([
-        "sudo", "docker", "run", "--cpus=4", "--memory=8g", "--network=host", "-d",
+    print(f"Running Docker container: {container_name}") 
+
+    # Define the command as a list
+    # FIXME: {os.environ['HOME']} is not flexible enough
+    command = [
+        "docker", "run",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{os.environ['HOME']}/Curie/src:/src:ro",
+        "-v", f"{os.environ['HOME']}/Curie/benchmark:/benchmark:ro",
+        "-v", f"{os.environ['HOME']}/Curie/logs:/logs",
+        "-v", f"{os.environ['HOME']}/Curie/starter_file:/workspace",
+        "--cpus=4",
+        "--memory=8g",
+        "--network=host",
+        "-d",
         "--name", container_name,
-        # "-v", f"{host_dir}:/eval_metadata", # remove since noticed that there is a small possibility that it may delete my logs folder on the host..
         image_name
-    ], check=True)
+    ]
+    print(f"Running command: {' '.join(command)}")
+
+    # Run the command
+    subprocess.run(command, check=True) 
     return container_name
 
 # Function to execute the experiment inside the Docker container
@@ -180,21 +209,21 @@ def execute_experiment_in_container(container_name, config_file, folder_prefix="
     try:
         # Run the experiment inside the container
         subprocess.run([
-            "sudo", "docker", "exec", container_name,
-            "bash", "-c", f"source ~/.bashrc && conda activate langgraph && python3 main.py {config_file}"
-        ], check=True)  # This will block until main.py finishes
+            "docker", "exec", container_name,
+            "bash", "-c", f"source ~/.bashrc && source setup/env.sh && conda activate curie && python3 main.py {config_file}"
+        ], check=True)  # This will block until main.py finishes. 
         print("Experiment completed successfully.")
         
         # Define source and destination directories
         container_log_dir = "/temp/logs/"  # Directory in the container
-        host_log_dir = os.path.expanduser(f"../eval_metadata/temp_logs/{folder_prefix}")  # Host directory
+        host_log_dir = os.path.expanduser(f"../logs/temp_logs/{folder_prefix}")  # Host directory
         
         # Ensure host log directory exists
         os.makedirs(host_log_dir, exist_ok=True)
         
         # Run the find and tar command inside the container
         find_tar_cmd = [
-            "sudo", "docker", "exec", container_name,
+            "docker", "exec", container_name,
             "sh", "-c",
             f"cd {container_log_dir} && find . -maxdepth 1 -type f -name '*.log' | tar -cf - -T -"
         ]
@@ -217,21 +246,21 @@ def execute_experiment_in_container(container_name, config_file, folder_prefix="
 # Function to stop and remove the Docker container
 def cleanup_docker_container(container_name):
     print(f"Stopping and removing Docker container: {container_name}...")
-    subprocess.run(["sudo", "docker", "stop", container_name], check=True)
-    subprocess.run(["sudo", "docker", "rm", container_name], check=True)
+    subprocess.run(["docker", "stop", container_name], check=True)
+    subprocess.run(["docker", "rm", container_name], check=True)
     print(f"Docker container {container_name} cleaned up.")
 
 def run_prune_commands():
     commands = [
-        ["sudo", "docker", "container", "prune", "-f"],
-        ["sudo", "docker", "image", "prune", "-f"],
-        ["sudo", "docker", "volume", "prune", "-f"],
-        ["sudo", "docker", "builder", "prune", "-f"],
+        [ "docker", "container", "prune", "-f"],
+        [ "docker", "image", "prune", "-f"],
+        [ "docker", "volume", "prune", "-f"],
+        [ "docker", "builder", "prune", "-f"],
     ]
 
     for command in commands:
         try:
-            print(f"Running command: {' '.join(command)}")
+            print(f"Running docker: {' '.join(command)}")
             result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             print(result.stdout.decode())  # Print the standard output
         except subprocess.CalledProcessError as e:
@@ -256,7 +285,9 @@ def execute_curie(question_file, unique_id, iteration, folder_prefix="llm_reason
             cleanup_docker_container(container_name)
         run_prune_commands()
         # x=1
+        pass
 
+# TODO: need a generic cleanup function
 def cleanup_vdb_workspace():
     try:
         dirname = "../baselines/openhands/workspace/vector_index_related/starter_file"
@@ -419,7 +450,7 @@ def run_magentic_docker_container(unique_id, iteration, PROMPT_FILE, folder_pref
     docker_filename = "MagenticDockerfile"
 
     command = [
-        "sudo", "docker", "build",
+        "docker", "build",
         "--build-arg", f"PROMPT_FILE={PROMPT_FILE}",
         "-t", "magentic-agent-image",
         "-f", "MagenticDockerfile",
@@ -430,7 +461,7 @@ def run_magentic_docker_container(unique_id, iteration, PROMPT_FILE, folder_pref
 
     print(f"Running Docker container: {container_name}")
     command = [
-        "sudo", "docker", "run",
+        "docker", "run",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
         "-v", "/usr/bin/docker:/usr/bin/docker",
         "--cpus=4",
@@ -459,7 +490,7 @@ def execute_experiment_in_magentic_container(container_name, question_file, fold
     try:
         # Run the experiment inside the container
         subprocess.run([
-            "sudo", "docker", "exec", container_name,
+            "docker", "exec", container_name,
             "bash", "-c", f"source ~/.bashrc && python /starter_file/autogen/python/packages/autogen-magentic-one/examples/example.py  --logs_dir /temp/logs"
         ], check=True)  # This will block until main.py finishes
         print("Experiment completed successfully.")
@@ -473,7 +504,7 @@ def execute_experiment_in_magentic_container(container_name, question_file, fold
         
         # Run the find and tar command inside the container
         find_tar_cmd = [
-            "sudo", "docker", "exec", container_name,
+            "docker", "exec", container_name,
             "sh", "-c",
             f"cd {container_log_dir} && find . -maxdepth 1 -type f -name '*.jsonl' | tar -cf - -T -"
         ]
@@ -481,7 +512,7 @@ def execute_experiment_in_magentic_container(container_name, question_file, fold
         log_suffix = os.path.basename(question_file).replace('.txt', '')
 
         rename_and_tar_cmd = [
-            "sudo", "docker", "exec", container_name,
+            "docker", "exec", container_name,
             "sh", "-c",
             f"""
             cd {container_log_dir} && \
@@ -571,6 +602,8 @@ def main():
         folder_prefix = "ml_training"
     elif args.category == QCategory.REASONING2:
         folder_prefix = "llm_reasoning_2"
+    elif args.category == QCategory.TESTING:
+        folder_prefix = "test"
 
     # Directory and file pattern
     questions_dir = f"../benchmark/{folder_prefix}"
@@ -607,16 +640,20 @@ def main():
 
 if __name__ == "__main__":
     # Create a main loop log file based on a uuid:
-    uuid_time = datetime.now().strftime("%Y%m%d%H%M%S")
-    main_loop_log_filename = f"../eval_metadata/logs/main_loop/main_loop_logs_{uuid_time}.log" # logs main loop metadata
-    main_loop_log_file = open(main_loop_log_filename, 'w')
-    sys.stdout = main_loop_log_file
-    sys.stderr = main_loop_log_file
+    # uuid_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    # if not os.path.exists("../logs/main_loop"):
+    #     os.makedirs("../logs/main_loop")
+
+    # main_loop_log_filename = f"../logs/main_loop/main_loop_logs_{uuid_time}.log" # logs main loop metadata
+    # main_loop_log_file = open(main_loop_log_filename, 'w')
+    # print(f"Main loop log file: {main_loop_log_filename}")
+    # sys.stdout = main_loop_log_file
+    # sys.stderr = main_loop_log_file
 
     main()
 
-    # Reset stdout and stderr
-    sys.stdout = sys.__stdout__
-    sys.stderr = sys.__stderr__
+    # # Reset stdout and stderr
+    # sys.stdout = sys.__stdout__
+    # sys.stderr = sys.__stderr__
 
-    print(f"Output logged to {main_loop_log_filename}")
+    # print(f"Output logged to {main_loop_log_filename}")

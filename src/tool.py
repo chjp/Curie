@@ -19,7 +19,9 @@ from pydantic import BaseModel, Field
 import formatter
 import settings
 
+import json
 import re
+import os
 
 @tool
 def test_search_tool(a: Annotated[str, "search string"]) -> str:
@@ -28,32 +30,117 @@ def test_search_tool(a: Annotated[str, "search string"]) -> str:
 
 shell_tool = ShellTool(timeout=1200)
 
-@tool
-def codeagent_openhands(prompt: Annotated[str, "The prompt to generate code for"]) -> str:
-    """Generate script for a given prompt."""
+def extract_plan_id(prompt: str) -> str:
+    """
+    Extracts the plan ID from the given prompt.
 
+    Args:
+        prompt (str): The input text containing a plan ID.
+
+    Returns:
+        str: The extracted plan ID if found, else an empty string.
+    """
+    # Regular expression to match UUID-like patterns (plan_id format)
+    pattern = r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+
+    # Search for the pattern in the prompt
+    match = re.search(pattern, prompt)
+    
+    # Return the matched plan ID if found, else return an empty string
+    return match.group(0) if match else int(time.time())
+
+def extract_partition_name(prompt: str) -> str:
+    """
+    Extracts the partition name from a given prompt.
+
+    Args:
+        prompt (str): The input text that may contain a partition name.
+
+    Returns:
+        str: The extracted partition name if found, else an empty string.
+    """
+    # Regular expression to match partition names (e.g., 'partition_1')
+    pattern = r"['\"]?(partition_\d+)['\"]?"
+    
+    # Search for the pattern in the prompt
+    match = re.search(pattern, prompt)
+    
+    # Return the matched partition name if found, else return an empty string
+    return match.group(1) if match else "partition_0"
+
+@tool
+def codeagent_openhands(prompt: Annotated[str, "The prompt to generate code for"] = 'Write a function print Hi.') -> str:
+    """Write/Modify code and write the script for a given experimentation plan, and return experimental workflow script."""
     # given the code workspace 
     # wait; return log and result script 
-    # example command: python -m openhands.core.main -f prompt 2>&1 | tee -a /home/ubuntu/Curie/logs/{time}_logging.txt
-    # TODO: remove the hardcoded path
-    # TODO: integrate openhands installation into the framework
-    try: 
-        shell_tool.run({"commands": ["export LOG_ALL_EVENTS=true"]})
-        output = shell_tool.run({"commands": [f"python -m openhands.core.main -t '{prompt}' 2>&1 | tee -a /starter_file/{int(time.time())}_logging.txt"]})
-        print(f"Output: {output}")
-    except BaseException as e:
-        print(f"Error generating code for prompt: {prompt}")
-        print(f"Error: {repr(e)}")
-        return f"Failed to generate code for prompt: {prompt}\nError: {repr(e)}"
-    return f"Code generated for prompt: {prompt}\nCode: {output}"
+    try:  
+        # TODO: remove the hardcoded path
+        # TODO: inform the new work dir
+    
+        current_dir = 'large_language_monkeys'
+        plan_id = extract_plan_id(prompt)
+        partition_name = extract_partition_name(prompt)
+        print(f"Plan ID: {plan_id}. Partition Name: {partition_name}")
 
+        new_starter_file_dir = f"../workspace/{current_dir}_{plan_id}"
+        old_starter_file_dir = f"../workspace/{current_dir}" 
+        output = shell_tool.run({"commands": [f"cp -r {old_starter_file_dir} {new_starter_file_dir}"]})
+        print(f"Output: {output}")
+
+        # TODO: Put the system prompt into a file
+        system_prompt = f'''You are a Coding Agent tasked with generating a fully reproducible experimental workflow based on the provided experiment plan. 
+        Your working directory is /workspace/{current_dir}_{plan_id}, you should not touch files outside this directory.
+        Key Requirements for OpenHands:
+        - (1) Control Group:
+            - Your primary responsibility is to construct the workflow, including the environment setup, and produce results for the control group.
+        - (2) Experimental Group:
+            - Represents test conditions where one or more independent variables differ from the control group.
+            - Ensure the workflow supports seamless substitution of variables for experimental groups without requiring further modifications.
+            - Achieve this by either: (i) Writing additional scripts or functions for the experimental groups. (ii) Modifying reusable parts of the workflow to parameterize control and experimental variables.
+
+        Program Requirement: The entire controlled experiment workflow (even if it involves multiple scripts) must be callable through a single program with the fixed filename "/workspace/control_experiment_{plan_id}_control_group_<partition_name>.sh", 
+        where plan_id {plan_id} and partition_name {partition_name} is filled with actual values. This program must take no arguments and should handle the execution of the entire workflow for the control group. 
+        The program must store the control group results in a single file named "/workspace/results_{plan_id}_control_group_<partition_name>.txt", 
+        and what the results mean should be easily understood (e.g., including measurement units). You may develop and test smaller standalone programs initially, 
+        but "/workspace/control_experiment_{plan_id}_control_group_<partition_name>.sh" must include all workflow functionality, either by embedding the code directly or by invoking the smaller programs.
+
+        Here is the experiment plan: '''
+
+        prompt = f'''{system_prompt}\n{prompt}'''
+        # write to a file
+        prompt_file = f"../logs/tmp_prompt.txt"
+        with open(prompt_file, "w") as file:
+            file.write(prompt)
+        
+        # FIXME, remove organization for public use
+        output = shell_tool.run({
+            "commands": [
+                f"export LOG_ALL_EVENTS=true; "
+                f'sed -i "474i \          \'organization\': \'499023\'," /root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/lib/python3.12/site-packages/litellm/llms/azure/azure.py; '
+                f"export WORKSPACE_BASE=/home/ubuntu/Curie/starter_file/; " # 
+                f"chmod 777 {new_starter_file_dir}; "
+                f"/root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/bin/python -m openhands.core.main -f {prompt_file} 2>&1 | tee -a /logs/{plan_id}_logging.txt; "
+                # f"conda activate curie; "
+            ]
+        })
+
+        # copy the starter file outside the container to the new directory inside the container
+        # FIXME: this does not support running outside the container.
+        print(f"Output: {output}") 
+
+    except BaseException as e:
+        print(f"Error for openhands agent: {repr(e)}")
+        return f"Failed to generate code for prompt: {prompt}\nError: {repr(e)}"
+    return (f"Code generated for prompt: {prompt}\n"
+           f"Updated workspace dir is /workspace/{current_dir}_{plan_id}\n"
+           f"Code generation process: {output}\n")
 
 # Note: shell_tool itself can in theory be passed into the agent as a tool already https://python.langchain.com/docs/integrations/tools/bash/ https://www.youtube.com/watch?v=-ybgQK0BE-I
 @tool
 def execute_shell_command(
     command: Annotated[str, "The shell command to execute"]
     ) -> str:
-    """Execute one shell command and return the output."""
+    """Execute one line shell command and return the output."""
     try:
         # For all $ symbols in the command, that don't have a \ appended right before the $, add a \ right before the $ symbol:
         command = re.sub(r'(?<!\\)\$', r'\\$', command)

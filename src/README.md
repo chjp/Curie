@@ -6,27 +6,36 @@ We will run our agent within a docker container.
 
 1. Build the container image. Whenever changes have been made: delete the current mounted volume (after backing up necessary data, of course), and rebuild the container image.
 
+```bash
+cd Curie
+git submodule update --init --recursive
+sed -i '36i\    user_id = 123 if user_id == 0 else user_id' starter_file/OpenHands/openhands/runtime/utils/runtime_init.py
+sed -i '237i \                "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},' starter_file/OpenHands/openhands/runtime/impl/docker/docker_runtime.py
+
+```
 
 ```bash
-cd Curie/src
-conda env create -f environment.yml
-sudo docker stop e4
-sudo docker rm e4
-sudo docker volume rm e4
-docker ps -a --format "{{.Names}}" | grep '^openhands-runtime' | xargs -r docker rm -f
-```
-
-```
-sudo docker build -t exp-agent-image-test -f ExpDockerfile_OpenHands ..
-sudo docker build  --no-cache   --progress=plain   -t exp-agent-image-test -f ExpDockerfile_OpenHands ..
+cd src
+sudo docker build --no-cache --progress=plain -t exp-agent-image-test -f ExpDockerfile_OpenHands ..
 ```
 
 2. Run and exec into container and begin running experiments. We are using a volume mount to persist the copied agent directory into ``exp-agent-container-data``.
 ```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock --cpus=4 --memory=8g --network=host -it --name e7 exp-agent-image-test bash
-sed -i '457i \          "organization": "499023",' /root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/lib/python3.12/site-packages/litellm/llms/azure/azure.py
+docker run -v /var/run/docker.sock:/var/run/docker.sock \
+    -v $HOME/Curie/src:/src:ro \
+    -v $HOME/Curie/benchmark:/benchmark:ro \
+    --cpus=4 \
+    --memory=8g \
+    --network=host \
+    -it --name e4 exp-agent-image-test bash
 
-sudo docker run --cpus=4 --memory=8g --network=host -it --name e2 exp-agent-image-test
+sed -i '457i \          "organization": "499023",' /root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/lib/python3.12/site-packages/litellm/llms/azure/azure.py
+source /root/.cache/pypoetry/virtualenvs/openhands-ai-*-py3.12/bin/activate
+```
+
+Start experiments:
+
+```bash
 conda activate curie
 source setup/env.sh
 python3 main.py configs/base_config.json
@@ -35,6 +44,8 @@ python3 main.py configs/cloud_config.json
 python3 main.py configs/llm_reasoning_config.json
 
 # or to run multiple iterations in a loop:
+python3 main_loop.py --iterations 1 --pipeline curie --timeout 600 --category reasoning --questions_to_run q1
+
 python3 main_loop.py --iterations 1 --pipeline curie --timeout 600 --category vdb
 python3 main_loop.py --iterations 2 --pipeline curie --timeout 600 --category vdb --questions_to_run q14
 python3 main_loop.py --iterations 5 --pipeline openhands --timeout 600 --category reasoning2 --questions_to_run q5 q8 q10
@@ -45,6 +56,11 @@ python3 parallel_runner_main_loop.py --config configs/parallel_run_config.json
 
 # in another terminal, you may consider viewing redirected stdout: 
 sudo tail -f /var/lib/docker/volumes/exp-agent-container-data/_data/misc/log-temp.log
+```
+
+To clean up the dockers
+```bash
+docker ps -a --format "{{.Names}}" | grep '^openhands-runtime' | xargs -r docker rm -f
 ```
 
 3. (optional) You can also exec into the container using this command.
