@@ -35,6 +35,24 @@ def create_PatchVerifierGraph(State, store, metadata_store):
     verifier_graph = create_VerifierGraph(State, store, metadata_store, system_prompt_file, tools, "patch_verifier")
     return verifier_graph
 
+def create_AnalyzerGraph(State, store, metadata_store):
+    """ Creates a analyzer graph consisting of the LLM-based analyzer that analyses results from the experimental workflow."""
+    system_prompt_file = "prompts/exp-analyzer.txt"
+    patcher_record_tool = tool.AnalyzerWriteTool(store, metadata_store)
+    store_get_tool = tool.StoreGetTool(store)
+    tools = [tool.read_file_contents, patcher_record_tool, store_get_tool] # Only tool is code execution for now
+    verifier_graph = create_VerifierGraph(State, store, metadata_store, system_prompt_file, tools, "analyzer")
+    return verifier_graph
+
+def create_ConcluderGraph(State, store, metadata_store):
+    """ Creates a concluder graph consisting of the LLM-based concluder that is only activated when all results have been produced."""
+    system_prompt_file = "prompts/exp-concluder.txt"
+    patcher_record_tool = tool.ConcluderWriteTool(store, metadata_store)
+    store_get_tool = tool.StoreGetTool(store)
+    tools = [tool.read_file_contents, patcher_record_tool, store_get_tool] # Only tool is code execution for now
+    verifier_graph = create_VerifierGraph(State, store, metadata_store, system_prompt_file, tools, "concluder")
+    return verifier_graph
+
 def create_VerifierGraph(State, store, metadata_store, system_prompt_file, tools, node_name):
     """ Creates a verifier graph consisting of the LLM-based verifier that checks through the experimental workflow to verify that actual data is produced. """
     # TODO: only creating one worker now. Not sure if we will create multiple workers.
