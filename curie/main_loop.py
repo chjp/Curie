@@ -96,7 +96,7 @@ def create_config_file(question_file, unique_id, iteration, task_config):
     with open(config_filename, "w") as f:
         json.dump(task_config, f, indent=4)
     print(f"Config file created: {config_filename}")
-    return config_filename
+    return task_config, config_filename
 
 
 def docker_image_exists(image):
@@ -159,7 +159,7 @@ def run_docker_container(unique_id, iteration, task_config):
     return container_name
 
 # Function to execute the experiment inside the Docker container
-def execute_experiment_in_container(container_name, config_file):
+def execute_experiment_in_container(container_name, task_config, config_file):
     """
     Executes the experiment inside the specified Docker container and retrieves log files.
 
@@ -170,18 +170,30 @@ def execute_experiment_in_container(container_name, config_file):
     Raises:
         Exception: If any subprocess command fails.
     """
-    print(f"Starting experiment in container {container_name} with config: {config_file}")
+    print(f"Starting experiment in container {container_name} with config: {task_config}")
     try:
         # Run the experiment inside the container
+
+        # 
         subprocess.run([
             "docker", "exec", container_name,
             "bash", "-c", f"source ~/.bashrc && source setup/env.sh && conda activate curie && python3 main.py {config_file}"
         ], check=True)  # This will block until main.py finishes. 
         print("Experiment completed successfully.")
-        
+        subprocess.run([
+            "docker", "exec", container_name,
+            "bash", "-c", (
+                "source ~/.bashrc && "
+                "source setup/env.sh && "
+                "conda activate curie && "
+                "sed -i '488i \\    \"organization\": \"499023\",' /opt/conda/envs/curie/lib/python3.11/site-packages/litellm/llms/AzureOpenAI/azure.py && "
+                f"python3 main.py {config_file}"
+            )
+        ], check=True)  # This will block until main.py finishes.
+
         # Define source and destination directories
         container_log_dir = "../logs/"  # Directory in the container
-        host_log_dir = os.path.expanduser(f"../logs/temp_logs/{task_config.category_name}")  # Host directory
+        host_log_dir = os.path.expanduser(f"../logs/temp_logs/{task_config['category_name']}")  # Host directory
         
         # Ensure host log directory exists
         os.makedirs(host_log_dir, exist_ok=True)
@@ -251,7 +263,7 @@ def prune_openhands_docker():
 
 def execute_curie(question_file, unique_id, iteration, task_config):
     # Create configuration file
-    config_file = create_config_file(question_file, unique_id, iteration, task_config)
+    task_config, config_filename = create_config_file(question_file, unique_id, iteration, task_config)
 
     # Run Docker container for this iteration
     container_name = None
@@ -259,7 +271,7 @@ def execute_curie(question_file, unique_id, iteration, task_config):
         container_name = run_docker_container(unique_id, iteration, task_config)
 
         # Execute experiment in Docker container
-        execute_experiment_in_container(container_name, config_file)
+        execute_experiment_in_container(container_name, task_config, config_filename)
 
     finally:
         # Clean up Docker container after each iteration
