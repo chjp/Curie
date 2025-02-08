@@ -86,8 +86,8 @@ def create_VerifierGraph(State, store, metadata_store, system_prompt_file, tools
 
 def create_Verifier(tools, system_prompt_file, State, node_name):    
     # print(tool.test_search_tool.invoke("What's a 'node' in LangGraph?"))
-    gpt_4_llm = model.create_gpt_4(tools)
-
+    import os
+    gpt_4_llm = os.environ.get("MODEL")
     def Verifier(state: State):
         # Read from prompt file:
         with open(system_prompt_file, "r") as file:

@@ -36,8 +36,8 @@ RUN node --version
 RUN conda env create -f environment.yml && \
     conda clean -a && \
     conda init bash && \
-    /bin/bash -c "source ~/.bashrc && conda activate curie"
-
+    /bin/bash -c "source ~/.bashrc && conda activate curie" 
+    
 RUN /opt/conda/bin/conda init bash
 # Install Python and other conda packages
 RUN conda install -y -c conda-forge python=3.12 "nodejs>=20" poetry && conda clean --all -y

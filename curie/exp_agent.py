@@ -60,8 +60,12 @@ def create_ExpSupervisorGraph(State, store, metadata_store, memory, config_filen
 
 def create_ExpSupervisor(tools, system_prompt_file, State):    
     # print(tool.test_search_tool.invoke("What's a 'node' in LangGraph?"))
-    gpt_4_llm = model.create_gpt_4(tools)
-    summarizer_llm = model.create_gpt_4()
+
+    # FIXME: better way to get model names; from config?
+    # FIXME: can move model name to model.py
+    import os
+    gpt_4_llm = os.environ.get("MODEL")
+    summarizer_llm = os.environ.get("MODEL")
 
     def ExpSupervisor(state: State):
         # Read from prompt file:
@@ -80,7 +84,7 @@ def create_ExpSupervisor(tools, system_prompt_file, State):
             messages.insert(0, system_message)
         
         # response = gpt_4_llm.invoke(messages)
-        response = model.query_model_safe(gpt_4_llm, summarizer_llm, messages)
+        response = model.query_model_safe(messages, tools=tools)
         print("FROM SUPERVISOR:")
         print(utils.parse_langchain_llm_output(response))
         print("-----------------------------------")

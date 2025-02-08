@@ -27,6 +27,10 @@ export OPENAI_ORGANIZATION=
 export OPENAI_API_BASE= 
 ```
 
+### Specify your research problem
+Config `curie/configs/base_config.json` 
+- [ ] Provide instructions
+
 ### Start experiments:
 - [ ] change the execution path to its parent
 ```bash

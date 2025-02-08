@@ -1,75 +1,117 @@
-from langchain_openai import AzureChatOpenAI
+from langchain_community.chat_models import ChatLiteLLM
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+import tiktoken
 import time
 import os
 from openai import BadRequestError
+from typing import List, Dict, Any
+from langchain_core.messages import BaseMessage
 
-GPT_4O_MAX_CHARS = 128000 * 4 - 10000 # an approximation based on gpt-4o context length, which is 128000 tokens, and also because 4 char is around 1 token, we minus 10000 for safety
-GPT_4O_DEFINED_CHAR_LIMIT = 100000 * 2 # giving ourselves more leeway than the actual limit, to avoid encountering case 1 as much as possible
+class TokenCounter:
+    # Pricing per 1k tokens (as of March 2024)
+    PRICE_PER_1K_TOKENS = { 
+        "gpt-4o": {"input": 0.0025, "output": 0.01}, 
+        "azure/gpt-4o": {"input": 0.0025, "output": 0.01}, 
+    }
 
-def create_gpt_4(tools=None) -> AzureChatOpenAI:
-    llm = AzureChatOpenAI(
-        model='gpt-4o',
-        api_key=os.getenv('OPENAI_API_KEY'),
-        azure_endpoint=os.getenv('OPENAI_API_BASE'),
-        api_version=os.getenv('API_VERSION'),
-        organization=os.getenv('OPENAI_ORGANIZATION'),
-    )
+    # Class-level variables to track accumulated usage across all instances
+    _accumulated_tokens = {"input": 0, "output": 0}
+    _accumulated_cost = {"input": 0.0, "output": 0.0}
 
-    if tools:
-        llm = llm.bind_tools(
-            tools, 
-            parallel_tool_calls=False # Avoid multi_tool_use.parallel in GPT-4o
-        )
+    def __init__(self):
+        self.current_model = os.environ.get("MODEL", "gpt-4o")
+        # Strip provider prefix if present (e.g., "openai/gpt-4" -> "gpt-4")
+        self.model_name = self.current_model.split('/')[-1]
+        
+        try:
+            self.encoding = tiktoken.encoding_for_model(self.model_name)
+        except KeyError:
+            # Fall back to cl100k_base for models not in tiktoken
+            self.encoding = tiktoken.get_encoding("cl100k_base")
 
-    return llm
+    @classmethod
+    def get_accumulated_stats(cls) -> Dict[str, Dict[str, float]]:
+        """Get accumulated token usage and costs across all instances."""
+        return {
+            "tokens": dict(cls._accumulated_tokens),
+            "costs": dict(cls._accumulated_cost),
+            "total_cost": sum(cls._accumulated_cost.values())
+        }
 
-def text_splitter_gpt_4o(text, chunk_size=GPT_4O_MAX_CHARS):
-    # Context window related:
-    # https://github.com/langchain-ai/langchain/issues/1349#issuecomment-1521567675
-    # GPT's context window and max output tokens: https://platform.openai.com/docs/models 
-    # Context length = context window. Max token and max length both refer to max output token length. https://community.openai.com/t/context-length-vs-max-token-vs-maximum-length/125585/2 
-    # Existing methods in langchain: https://github.com/langchain-ai/langchain/issues/12264
-    # Text splitting: https://python.langchain.com/docs/how_to/recursive_text_splitter/
-        # chunk size refers to the number of characters per chunk I think: https://dev.to/eteimz/understanding-langchains-recursivecharactertextsplitter-2846 
+    def count_message_tokens(self, message: BaseMessage) -> int:
+        """Count tokens in a single message."""
+        num_tokens = len(self.encoding.encode(message.content))
+        # Add tokens for message format (role, etc.)
+        num_tokens += 4  # Format tokens
+        return num_tokens
 
-    # Handle edge case where the text is a list: TypeError: expected string or bytes-like object, got 'list'
-    if isinstance(text, list):
-        return []
+    def count_messages_tokens(self, messages: List[BaseMessage]) -> Dict[str, int]:
+        """Count tokens in a list of messages."""
+        input_tokens = sum(self.count_message_tokens(msg) for msg in messages)
+        return {"input_tokens": input_tokens}
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        # Set a really small chunk size, just to show.
-        chunk_size=chunk_size,
-        chunk_overlap=20,
-        length_function=len,
-        is_separator_regex=False,
-    )
-    return text_splitter.split_text(text)
+    def estimate_cost(self, token_counts: Dict[str, int]) -> Dict[str, float]:
+        """Estimate cost based on token counts, returning costs for both input and output."""
+        costs = {"input": 0.0, "output": 0.0}
+        
+        # Calculate input token cost
+        if "input_tokens" in token_counts:
+            costs["input"] = (token_counts["input_tokens"] / 1000) * self.PRICE_PER_1K_TOKENS.get(
+                self.model_name, {"input": 0.01}
+            )["input"]
+        
+        # Calculate output token cost
+        if "output_tokens" in token_counts:
+            costs["output"] = (token_counts["output_tokens"] / 1000) * self.PRICE_PER_1K_TOKENS.get(
+                self.model_name, {"output": 0.02}
+            )["output"]
+        
+        return costs
 
-def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2):
-    """
-    Executes a function with retry logic.
+    def update_usage(self, token_counts: Dict[str, int]):
+        """Update accumulated usage statistics."""
+        # Update accumulated tokens
+        self._accumulated_tokens["input"] += token_counts.get("input_tokens", 0)
+        self._accumulated_tokens["output"] += token_counts.get("output_tokens", 0)
+        
+        # Calculate and update accumulated costs
+        costs = self.estimate_cost(token_counts)
+        self._accumulated_cost["input"] += costs["input"]
+        self._accumulated_cost["output"] += costs["output"]
 
-    :param func: The function to execute.
-    :param max_retries: The maximum number of retry attempts.
-    :param delay: The delay (in seconds) between retries.
-    :param kwargs: Arguments to pass to the function.
-    :return: The function's result if successful.
-    :raises: The last exception encountered if all retries fail.
-    """
+def create_completion(messages: List[BaseMessage], tools: List = None) -> Any:
+    """Create a completion using LiteLLM"""
+    try:
+        chat = ChatLiteLLM(model=os.environ.get("MODEL"))
+        if tools:
+            chat = chat.bind_tools(tools, parallel_tool_calls=False)
+        return chat.invoke(messages)
+    except Exception as e:
+        print(f"Error in LLM API create_completion: {e}")
+        raise e
+
+def query_model_safe(
+    messages: List[BaseMessage],
+    tools: List = None,
+    max_retries: int = 3,
+    delay: int = 2
+) -> Any:
+    """Execute model query with token counting and cost estimation."""
+    token_counter = TokenCounter()
+    context_length = get_model_context_length()
+    max_tokens = context_length - 1000  # Reserve tokens for response
+    
     attempt = 0
     while attempt < max_retries:
         try:
-            # Case 1: all messages add up to over the context limit: we just prune a set amount of messages in the middle
-            # Specifically, we prune 40% of messages among the list of messages, if when adding up all message's individual lengths, the total length exceeds the context limit:
-            total_length = sum([len(message.content) for message in messages])
-            if total_length > GPT_4O_MAX_CHARS:
-                print(f"Total message length will exceed context limit. Total length of messages now: {total_length}. Pruning messages.")
-                # Prune 40% of messages in between the messages list:
-
+            # Count input tokens before processing
+            token_counts = token_counter.count_messages_tokens(messages)
+            
+            # Case 1: Prune messages if total tokens exceed context length
+            if token_counts["input_tokens"] > max_tokens:
+                print(f"Total tokens ({token_counts['input_tokens']}) exceed limit ({max_tokens}). Pruning messages.")
                 messages_to_prune = messages[len(messages) // 3: -len(messages) // 3]
-
-                # Iterate from the back of messages_to_prune, if we see a ToolMessage, we keep the message that comes before it. If we see any other message, we prune it. 
+                
                 j = len(messages_to_prune) - 1
                 while j >= 0:
                     if messages_to_prune[j].type == "tool":
@@ -77,51 +119,49 @@ def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2
                     else:
                         messages_to_prune.pop()
                         j -= 1
-                        
+                
                 messages = messages[:len(messages) // 3] + messages_to_prune + messages[-len(messages) // 3:]
+                token_counts = token_counter.count_messages_tokens(messages)
+                print(f"After pruning - Tokens: {token_counts['input_tokens']}")
 
+            # Case 2: Handle large last message
+            last_message_tokens = token_counter.count_message_tokens(messages[-1])
+            if last_message_tokens > max_tokens // 2:
+                print(f"Last message too large ({last_message_tokens} tokens). Splitting and summarizing.")
+                chunks = text_splitter_by_tokens(messages[-1].content, max_tokens // 2, token_counter)
+                
+                if len(chunks) > 1:
+                    summarized_text = ""
+                    for i, chunk in enumerate(chunks):
+                        print(f"Processing chunk {i + 1} of {len(chunks)}")
+                        summary_messages = [
+                            messages[0].__class__(
+                                content="Summarize the following text. Be concise, but maintain structure: \n" + chunk
+                            )
+                        ]
+                        response = create_completion(summary_messages)
+                        summarized_text += response.content + "\n"
+                    
+                    messages[-1].content = summarized_text.strip()
 
-                total_length = sum([len(message.content) for message in messages])
-                print(f"Pruning complete... Total length of messages now: {total_length}.")
+            # Execute final completion
+            response = create_completion(messages, tools=tools)
+            print(f"Response: {response}")
 
-            # Case 2: Split the last message into chunks: (since this is the only possibility for exceeding GPT-4o max context length limits)
-            splitted_text = text_splitter_gpt_4o(messages[-1].content, GPT_4O_MAX_CHARS)
-            # if we did exceed, we will need to iteratively pass the input into the LLM:
-            if len(splitted_text) > 1: # my observation is that huge text chunks usually come only from execute_shell_command
+            # use tiktoken to count output tokens
+            token_counts["output_tokens"] = len(token_counter.encoding.encode(response.content))
+            print(f"token_counts: {token_counts}")
+            token_counter.update_usage(token_counts)            
+            # Get current costs
+            costs = token_counter.estimate_cost(token_counts)
+            accumulated_stats = TokenCounter.get_accumulated_stats()
+            # FIXME: this does not count external tool API cost
+            print("\n===== Cost Estimation =====")
+            print(f"  Total Tokens Used: {token_counts}")
+            print(f"  Cost for This Round: ${sum(costs.values()):.4f}")
+            print(f"  Cumulative Cost: ${accumulated_stats['total_cost']:.4f}")
 
-                splitted_text = text_splitter_gpt_4o(messages[-1].content, GPT_4O_DEFINED_CHAR_LIMIT)
-
-                summarized_text = ""
-                print(f"Last message length will exceed defined context limit. Splitting text into {len(splitted_text)} chunks")
-                for i, text_chunk in enumerate(splitted_text):
-                    print(f"Processing chunk {i + 1} of {len(splitted_text)}")
-                    # Ask our summarizer gpt-4o model to summarize chunks:
-
-                    print("Chunk length before summarize:", len(text_chunk))
-
-                    response = summarizer_model.invoke("Summarize the following text. Be concise, but leave the original formatting/structure intact. A method to do this is to just prune many lines that may not be important. Don't output anything other than the summarized text. Here is the text: \n" + text_chunk)
-
-                    print("Summarizer Response:", response)
-
-                    summarized_text += response.content
-
-                    print("Chunk length after summarize:", len(response.content))
-
-                # Reassign the last message content to the summarized text:
-                messages[-1].content = summarized_text
-
-            # Case 3: if the last message exceeds our own defined limit (high leeway), we summarize it:
-            splitted_text = text_splitter_gpt_4o(messages[-1].content, GPT_4O_DEFINED_CHAR_LIMIT)
-            if len(splitted_text) > 1:
-                print("Chunk length before summarize:", len(messages[-1].content))
-                print(f"Last message length will exceed defined context limit of {GPT_4O_DEFINED_CHAR_LIMIT}. Summarizing text...")
-                messages[-1].content = summarizer_model.invoke("Summarize the following text. Be concise, but leave the original formatting/structure intact. A method to do this is to just prune many lines that may not be important. Don't output anything other than the summarized text. Here is the text: \n" + messages[-1].content).content
-
-                print("Summarizer Response:", messages[-1].content)
-
-                print("Chunk length after summarize:", len(messages[-1].content))
-
-            return model.invoke(messages)
+            return response
 
         except BadRequestError as e:
             print(f"Bad request error: {e}")
@@ -131,7 +171,7 @@ def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2
                 time.sleep(delay)
             else:
                 raise e
-        except Exception as e: # I expect this will happen when we call text_splitter_gpt_4o with a huge message content
+        except Exception as e:
             print(f"Unexpected error: {e}")
             attempt += 1
             if attempt < max_retries:
@@ -139,19 +179,24 @@ def execute_with_retry(model, summarizer_model, messages, max_retries=3, delay=2
                 time.sleep(delay)
             else:
                 raise e
+    
     raise RuntimeError(f"Failed after {max_retries} retries.")
 
-def query_model_safe(model, summarizer_model, messages):
-    # Messages should be a list of langchain_core.messages objects
-    return execute_with_retry(model, summarizer_model, messages)
+# Keep these helper functions unchanged
+def get_model_context_length() -> int:
+    """Get the context length for the current model."""
+    chat = ChatLiteLLM(model=os.environ.get("MODEL"))
+    return chat.context_length if hasattr(chat, 'context_length') else 8192
 
-# print(len(text_splitter_gpt_4o("""
-# What I Worked On
+def text_splitter_by_tokens(text: str, chunk_size: int, token_counter: TokenCounter) -> List[str]:
+    """Split text based on token count instead of characters."""
+    if isinstance(text, list):
+        return []
 
-# February 2021
-
-# Before college the two main things I worked on, outside of school, were writing and programming. I didn't write essays. I wrote what beginning writers were supposed to write then, and probably still are: short stories. My stories were awful. They had hardly any plot, just characters with strong feelings, which I imagined made them deep.
-
-# The first programs I tried writing were on the IBM 1401 that our school district used for what was then called "data processing." This was in 9th grade, so I was 13 or 14. The school district's 1401 happened to be in the basement of our junior high school, and my friend Rich Draves and I got permission to use it. It was like a mini Bond villain's lair down there, with all these alien-looking machines — CPU, disk drives, printer, card reader — sitting up on a raised floor under bright fluorescent lights.
-# """
-# )))
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=100,
+        length_function=lambda x: len(token_counter.encoding.encode(x)),
+        is_separator_regex=False,
+    )
+    return text_splitter.split_text(text)

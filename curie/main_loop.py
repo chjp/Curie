@@ -174,12 +174,6 @@ def execute_experiment_in_container(container_name, task_config, config_file):
     try:
         # Run the experiment inside the container
 
-        # 
-        subprocess.run([
-            "docker", "exec", container_name,
-            "bash", "-c", f"source ~/.bashrc && source setup/env.sh && conda activate curie && python3 main.py {config_file}"
-        ], check=True)  # This will block until main.py finishes. 
-        print("Experiment completed successfully.")
         subprocess.run([
             "docker", "exec", container_name,
             "bash", "-c", (
@@ -193,7 +187,7 @@ def execute_experiment_in_container(container_name, task_config, config_file):
 
         # Define source and destination directories
         container_log_dir = "../logs/"  # Directory in the container
-        host_log_dir = os.path.expanduser(f"../logs/temp_logs/{task_config['category_name']}")  # Host directory
+        host_log_dir = os.path.expanduser(f"../logs/{task_config['category_name']}")  # Host directory
         
         # Ensure host log directory exists
         os.makedirs(host_log_dir, exist_ok=True)

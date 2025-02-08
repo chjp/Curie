@@ -86,9 +86,10 @@ def create_Worker(tools, system_prompt_file, config_file, State, worker_name):
     """ Normal worker that runs experimental groups given a working controlled experiment setup that was created by a controlled worker earlier. """
 
     # print(tool.test_search_tool.invoke("What's a 'node' in LangGraph?"))
-    gpt_4_llm = model.create_gpt_4(tools)
-    summarizer_llm = model.create_gpt_4()
-
+    import os
+    gpt_4_llm = os.environ.get("MODEL")
+    summarizer_llm = os.environ.get("MODEL")
+    
     def Worker(state: State):
         # Read from prompt file:
         with open(system_prompt_file, "r") as file:
@@ -120,7 +121,7 @@ def create_Worker(tools, system_prompt_file, config_file, State, worker_name):
         # print(messages)
 
         # response = gpt_4_llm.invoke(messages)
-        response = model.query_model_safe(gpt_4_llm, summarizer_llm, messages)
+        response = model.query_model_safe(messages, tools)
         print("FROM worker: " + worker_name)
         # print("Worker prompt and prior messages: ")
         # print(messages)
