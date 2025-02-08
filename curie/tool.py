@@ -99,10 +99,13 @@ def codeagent_openhands(prompt: Annotated[str, "The prompt to generate code for"
         print(f"Plan ID: {plan_id}. Partition Name: {partition_name}")
 
         new_starter_file_dir = f"../workspace/{current_dir}_{plan_id}"
-        old_starter_file_dir = f"../workspace/{current_dir}" 
-        output = shell_tool.run({"commands": [f"cp -r {old_starter_file_dir} {new_starter_file_dir}"]})
-        print(f"Output: {output}")
-
+        old_starter_file_dir = f"../starter_file/{current_dir}" 
+        if not os.path.exists(new_starter_file_dir):
+            os.makedirs(new_starter_file_dir)
+            output = shell_tool.run({"commands": [f"cp -r {old_starter_file_dir} {new_starter_file_dir}"]})
+            print(f"Output: {output}")
+        else:
+            print(f"Working on the existing directory: {new_starter_file_dir}")
         # TODO: Put the system prompt into a file
         system_prompt = f'''You are a Coding Agent tasked with generating a fully reproducible experimental workflow based on the provided experiment plan. 
         Your working directory is /workspace/{current_dir}_{plan_id}, you should not touch files outside this directory.

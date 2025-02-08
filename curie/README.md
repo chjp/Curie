@@ -31,7 +31,7 @@ export OPENAI_API_BASE=
 - [ ] change the execution path to its parent
 ```bash
 cd Curie/curie
-python3 main_loop.py --iterations 1 --pipeline curie --timeout 600 --question_file ../benchmark/llm_reasoning/q1_simple_relation.txt 
+python3 main_loop.py --iterations 1 --pipeline curie --timeout 600 --question_file ../benchmark/llm_reasoning/q1_simple_relation.txt --task_config configs/base_config.json
 ```
 
 To clean up the dockers

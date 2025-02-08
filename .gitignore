@@ -1,11 +1,14 @@
 logs
 config.toml
+curie/venv
+starter_file/
 code_logging
-src/config.toml
+curie/config.toml
 *.pyc
 baselines/openhands/session_cache
 baselines/openhands/workspace
 .aws_creds
 baselines/autobuild/.OAI_CONFIG_LIST
-src/setup/env.sh
+curie/setup/env.sh
+workspace/*
 baselines/openhands/config.toml
