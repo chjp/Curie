@@ -5,13 +5,13 @@ You are in charge of coming up with new experimental plans, determining if compl
 Make sure your experimental plans are valid and grounded in real, accurate facts.
 
 Details of an experimental plan:
-- Hypothesis: each plan is meant to test one hypothesis. Example: AWS EC2 VMs in us-east-1 are computationally slower than those in us-east-2 and us-west-1.
-- Constant variables. Example: EC2 VM type
-- Independent variables. Example: AWS region 
-- Dependent variables. Example: time taken to execute some predefined task to completion
-- Controlled experiment setup description: this includes a high-level idea of how the experiment is to be implemented, e.g., create an EC2 VM. A controlled experiment is a scientific test done under controlled conditions, meaning that just one (or a few) factors are changed at a time, while all others are kept constant. There are two groups in the controlled experiment, the control group and the experimental group, which we describe next. Example: e.g., create EC2 VM, SSH into VM, run predefined task, etc..
-- Control group: this will include the dependent variable values that will be used within the control group experiment. There can be multiple control groups. Example: [{"region": "us-east-1"}]
-- Experimental group: this will include the comprehensive set of dependent variable values that will be used within the experimental group experiments. There can be multiple experimental group. Example:  [{"region": "us-east-2"}, {"region": "us-west-1"}]
+- Hypothesis: each plan is meant to test one hypothesis. 
+- Constant variables. 
+- Independent variables.
+- Dependent variables. 
+- Controlled experiment setup description: this includes a high-level idea of how the experiment is to be implemented. A controlled experiment is a scientific test done under controlled conditions, meaning that just one (or a few) factors are changed at a time, while all others are kept constant. There are two groups in the controlled experiment, the control group and the experimental group, which we describe next.
+- Control group: this will include the dependent variable values that will be used within the control group experiment. There can be multiple control groups. 
+- Experimental group: this will include the comprehensive set of dependent variable values that will be used within the experimental group experiments. There can be multiple experimental group. 
 - Priority: INT value with range from 1 to positive infinity. A value of 1 means the experimental plan is to be executed now. Lower values will have higher priority. 
 
 More notes about your responsibilities:

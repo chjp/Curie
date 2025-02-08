@@ -53,15 +53,14 @@ def parse_args():
         help="Pipeline value (must be one of: openhands, curie)."
     )
 
-    # Add argument for question category
     parser.add_argument(
-        "--category",
-        type=QCategory,
-        choices=list(QCategory),
+        "--question_file",
+        "-f",
+        type=str,
         required=True,
-        help="Question category (must be one of: reasoning, vdb, cloud, mltraining, reasoning2)."
+        help="Question file to run"
     )
-    
+
     # Add argument for timeout
     parser.add_argument(
         "--timeout",
@@ -70,35 +69,15 @@ def parse_args():
         help="Timeout in seconds (must be an integer)."
     )
 
-    # Add argument for questions_to_run, default to None, otherwise if provided, it should be of type list:
+
     parser.add_argument(
-        "--questions_to_run",
-        nargs="*", # All command-line arguments present are gathered into a list.
-        default=[],
-        help="Questions to run (can be an arbitary number of questions). Specify like so: q1 q2 q3"
+        "--task_config",
+        type=str, 
+        default="configs/base_config.json",
+        help="Task configuration file"
     )
 
     return parser.parse_args()
-
-# Function to find all matching files
-def find_question_files(directory, pattern, questions_to_run):
-    """
-        questions_to_run: either will be an empty list (meaning we run all questions) or it will be a list of question prefixes like ["q1, "q2"]
-    """
-    question_files = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            # print(f"Checking file: {root}")
-            if "ground_truth" in root:
-                continue
-            if re.match(pattern, file):
-            # and "q1" not in file and "q2" not in file and "q3" not in file and "q4" not in file and "q5" not in file and "q6" not in file:  # Match the file pattern
-                if questions_to_run: # if we specify the questions we want to run, then only run those questions.
-                    if any(q in file for q in questions_to_run):
-                        question_files.append(os.path.join(root, file))
-                else:
-                    question_files.append(os.path.join(root, file))
-    return question_files
 
 def get_log_file_openhands(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
     if not os.path.exists(f"../logs/temp_logs/openhands/{folder_prefix}"):
@@ -107,33 +86,15 @@ def get_log_file_openhands(question_file, unique_id, iteration, folder_prefix="l
     return os.path.abspath(log_filename) # abs filepath is fine since this refers to the host directory too. 
 
 # Function to create a configuration file
-def create_config_file(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
-    log_dir = '../logs/configs'
-    # os.makedirs(log_dir, exist_ok=True)
-    log_filename = f"/temp/logs/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
-    config_filename = f"{log_dir}/{folder_prefix}_config_{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.json"
-
-    if folder_prefix == "cloud_infra":
-        config = {
-            "benchmark_specific_context": "prompts/benchmark_specific/cloud-infra-questions-helper-context.txt", 
-            "question_filename": question_file,
-            "log_filename": log_filename,
-            "supervisor_system_prompt_filename": "prompts/benchmark_specific/cloud-infra-supervisor.txt",
-            "control_worker_system_prompt_filename": "prompts/benchmark_specific/cloud-infra-controlled-worker.txt",
-        }
-    else:
-        config = {
-            "benchmark_specific_context": "none",
-            "question_filename": question_file,
-            "log_filename": log_filename,
-            "supervisor_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-supervisor.txt",
-            # "control_worker_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-controlled-worker.txt",
-            "control_worker_system_prompt_filename": "prompts/benchmark_specific/llm-reasoning-oh-controlled-worker.txt",
-        }
+def create_config_file(question_file, unique_id, iteration, task_config):
+    log_dir = '../logs/configs' 
+    log_filename = f"../logs/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
+    config_filename = f"{log_dir}/{task_config['category_name']}_config_{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.json"
+    task_config.update({"unique_id": unique_id, "iteration": iteration, "log_filename": log_filename, "question_filename": question_file})
 
     os.makedirs(os.path.dirname(config_filename), exist_ok=True)
     with open(config_filename, "w") as f:
-        json.dump(config, f, indent=4)
+        json.dump(task_config, f, indent=4)
     print(f"Config file created: {config_filename}")
     return config_filename
 
@@ -152,23 +113,26 @@ def docker_image_exists(image):
 
 
 # Function to run a Docker container
-def run_docker_container(unique_id, iteration, folder_prefix="llm_reasoning"):
+def run_docker_container(unique_id, iteration, task_config):
     rand_uuid = uuid.uuid4()
     container_name = f"exp-agent-container-{unique_id}-{rand_uuid}-iter{iteration}"
     print(f"Building Docker image for iteration {iteration}...")
     
-    if folder_prefix == "llm_reasoning_2":
-        image_name = "exp-agent-image-llm-reasoning-2"
-        docker_filename = "ExpDockerfile_llm_reasoning_2"
-    else:
-        image_name = "exp-agent-image-test"
-        docker_filename = "ExpDockerfile_OpenHands"
+    image_name = task_config["docker_image"]
+    docker_filename = task_config["dockerfile_name"]
 
     if docker_image_exists(image_name):
         print(f"Using existing Docker image: {image_name}")
     else:
-        subprocess.run(["docker", "build", "-t", image_name, "-f", docker_filename, ".."], check=True)
-
+        command = [
+            "sudo", "docker", "build",
+            "--no-cache", "--progress=plain",
+            "-t",  image_name,
+            "-f",  docker_filename,
+            ".."
+        ] 
+        subprocess.run(command, check=True)
+    
     print(f"Running Docker container: {container_name}") 
 
     # Define the command as a list
@@ -194,7 +158,7 @@ def run_docker_container(unique_id, iteration, folder_prefix="llm_reasoning"):
     return container_name
 
 # Function to execute the experiment inside the Docker container
-def execute_experiment_in_container(container_name, config_file, folder_prefix="llm_reasoning"):
+def execute_experiment_in_container(container_name, config_file):
     """
     Executes the experiment inside the specified Docker container and retrieves log files.
 
@@ -215,8 +179,8 @@ def execute_experiment_in_container(container_name, config_file, folder_prefix="
         print("Experiment completed successfully.")
         
         # Define source and destination directories
-        container_log_dir = "/temp/logs/"  # Directory in the container
-        host_log_dir = os.path.expanduser(f"../logs/temp_logs/{folder_prefix}")  # Host directory
+        container_log_dir = "../logs/"  # Directory in the container
+        host_log_dir = os.path.expanduser(f"../logs/temp_logs/{task_config.category_name}")  # Host directory
         
         # Ensure host log directory exists
         os.makedirs(host_log_dir, exist_ok=True)
@@ -284,17 +248,17 @@ def prune_openhands_docker():
     else:
         print("No matching containers found.")
 
-def execute_curie(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
+def execute_curie(question_file, unique_id, iteration, task_config):
     # Create configuration file
-    config_file = create_config_file(question_file, unique_id, iteration, folder_prefix)
+    config_file = create_config_file(question_file, unique_id, iteration, task_config)
 
     # Run Docker container for this iteration
     container_name = None
     try:
-        container_name = run_docker_container(unique_id, iteration, folder_prefix)
+        container_name = run_docker_container(unique_id, iteration, task_config)
 
         # Execute experiment in Docker container
-        execute_experiment_in_container(container_name, config_file, folder_prefix)
+        execute_experiment_in_container(container_name, config_file)
 
     finally:
         # Clean up Docker container after each iteration
@@ -608,52 +572,35 @@ def main():
     print(f"Iterations: {args.iterations}")
     print(f"Pipeline: {args.pipeline}")
     print(f"Timeout: {args.timeout} seconds")
+    config_file = args.task_config
+    question_file = args.question_file
+    # read from config
+    try:
+        with open(config_file, 'r') as f:
+            task_config = json.load(f)
+            print(f"Config: {task_config}")
+    except Exception as e:
+        print(f"Error reading config file: {e}")
+        return
+    
+    print(f"Processing {question_file} for {args.iterations} iterations...")
+    for iteration in range(1, args.iterations + 1):
+        # Perform the required operation for each iteration (to be provided later)
+        print(f"Iteration {iteration} ")
+        start_time = time.time() 
+        unique_id = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    if args.category == QCategory.REASONING:
-        folder_prefix = "llm_reasoning"
-    elif args.category == QCategory.VDB:
-        folder_prefix = "vector_index"
-    elif args.category == QCategory.CLOUD:
-        folder_prefix = "cloud_infra"
-    elif args.category == QCategory.MLTRAINING:
-        folder_prefix = "ml_training"
-    elif args.category == QCategory.REASONING2:
-        folder_prefix = "llm_reasoning_2"
-    elif args.category == QCategory.TESTING:
-        folder_prefix = "test"
+        if args.pipeline == Pipeline.OPENHANDS:
+            question_file = os.path.abspath(question_file) # question_file is a relative path in this format: ../benchmark/llm_reasoning/q4_target_coverage.txt. We convert it to an abs path for openhands since we need to pass in the abs dir. 
+            execute_openhands(question_file, unique_id, iteration, folder_prefix)
+        elif args.pipeline == Pipeline.CURIE:
+            execute_curie(question_file, unique_id, iteration, task_config)
+        elif args.pipeline == Pipeline.MAGENTIC:
+            execute_magentic(question_file, unique_id, iteration, folder_prefix)
 
-    # Directory and file pattern
-    questions_dir = f"../benchmark/{folder_prefix}"
-    file_pattern = r"^q.*\.txt$"  # Pattern for q<string>.txt
-
-    # Find all matching question files
-    question_files = find_question_files(questions_dir, file_pattern, args.questions_to_run)
-    print(f"Found {len(question_files)} question files:")
-    for question_file in question_files:
-        print(f"  - {question_file}")
-
-    # Iterate through each question file
-    for question_file in question_files:
-        print(f"Processing {question_file} for {args.iterations} iterations...")
-        for iteration in range(1, args.iterations + 1):
-            start_time = time.time()
-            # Perform the required operation for each iteration (to be provided later)
-            print(f"Iteration {iteration} for {question_file}...")
-
-            # Unique identifier for log and config filenames
-            unique_id = datetime.now().strftime("%Y%m%d%H%M%S")
-
-            if args.pipeline == Pipeline.OPENHANDS:
-                question_file = os.path.abspath(question_file) # question_file is a relative path in this format: ../benchmark/llm_reasoning/q4_target_coverage.txt. We convert it to an abs path for openhands since we need to pass in the abs dir. 
-                execute_openhands(question_file, unique_id, iteration, folder_prefix)
-            elif args.pipeline == Pipeline.CURIE:
-                execute_curie(question_file, unique_id, iteration, folder_prefix)
-            elif args.pipeline == Pipeline.MAGENTIC:
-                execute_magentic(question_file, unique_id, iteration, folder_prefix)
-
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            print(f"Iteration {iteration} for {question_file} completed in {elapsed_time:.2f} seconds.")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Iteration {iteration} for {question_file} completed in {elapsed_time:.2f} seconds.")
 
 if __name__ == "__main__":
     # Create a main loop log file based on a uuid:
