@@ -1,139 +1,631 @@
-# Define overall graph
-from typing import Annotated, Literal
-
-from typing_extensions import TypedDict
-
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.messages import HumanMessage, SystemMessage
-
-from langgraph.store.memory import InMemoryStore
-from langgraph.checkpoint.memory import MemorySaver
-
-import model
-import utils
-import tool
-import exp_agent
-import worker_agent
-import settings
-import scheduler as sched
-import verifier
-
-# import router
-
-import sys
-import traceback
+import subprocess
+import time
+import os
+import shutil  # Import for deleting directories
+import psutil
+import argparse
+from enum import Enum
 import json
+import re
+from datetime import datetime 
+import sys
+import uuid
 
-config_filename = sys.argv[1]
+# Define an Enum for the baseline values
+class Pipeline(Enum):
+    OPENHANDS = "openhands"
+    CURIE = "curie"
+    MAGENTIC = "magentic"
 
-# Read config_file which is a json file:
-with open(config_filename, 'r') as file:
-    config = json.load(file)
-    question_filename = config["question_filename"]
+    def __str__(self):
+        return self.value  # For proper display in argparse help text
 
-    log_filename = config["log_filename"]
-    log_file = open(log_filename, 'w')
-    sys.stdout = log_file
-    sys.stderr = log_file
+# Define an Enum for the question category values
+class QCategory(Enum):
+    REASONING = "reasoning"
+    VDB = "vdb"
+    CLOUD = "cloud"
+    MLTRAINING = "mltraining"
+    REASONING2 = "reasoning2"
+    TESTING = "test"
 
-class State(TypedDict):
-    # Messages have the type "list". The `add_messages` function
-    # in the annotation defines how this state key should be updated
-    # (in this case, it appends messages to the list, rather than overwriting them)
-    messages: Annotated[list, add_messages]
-    prev_agent: Literal[*settings.AGENT_LIST]
-    next_agent: Literal[*settings.AGENT_LIST]
-    is_terminate: bool
+    def __str__(self):
+        return self.value  # For proper display in argparse help text
 
-graph_builder = StateGraph(State)
+# Create a function to parse input arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description="Process input arguments for the script.")
+    
+    # Add argument for iterations
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        required=True,
+        help="Number of iterations (must be an integer)."
+    )
+    
+    # Add argument for baseline
+    parser.add_argument(
+        "--pipeline",
+        type=Pipeline,
+        choices=list(Pipeline),
+        required=True,
+        help="Pipeline value (must be one of: openhands, curie)."
+    )
 
-store = InMemoryStore()
-metadata_store = InMemoryStore()
-memory = MemorySaver()
+    parser.add_argument(
+        "--question_file",
+        "-f",
+        type=str,
+        required=True,
+        help="Question file to run"
+    )
 
-# Create scheduler:
-sched_tool = sched.SchedTool(store, metadata_store)
-sched_node = sched.create_SchedNode(sched_tool, State, metadata_store)
-graph_builder.add_node("scheduler", sched_node)
-# Create supervisor graph:
-supervisor_graph = exp_agent.create_ExpSupervisorGraph(State, store, metadata_store, memory, config_filename)
-graph_builder.add_node("supervisor", supervisor_graph)
-# Create worker graph:
-experiment_worker_graph, control_worker_graph = worker_agent.create_all_worker_graphs(
-    State, 
-    store, 
-    metadata_store, 
-    memory,
-    config_filename = config_filename)
-worker_names = settings.list_worker_names() # we only have one worker for now
-experimental_worker_name = worker_names[0]
-worker_names = settings.list_control_worker_names() # we only have one worker for now
-control_worker_name = worker_names[0]
-graph_builder.add_node(experimental_worker_name, experiment_worker_graph)
-graph_builder.add_node(control_worker_name, control_worker_graph)
-# Create LLM verifier graph:
-verifier_graph = verifier.create_LLMVerifierGraph(State, store, metadata_store)
-graph_builder.add_node("llm_verifier", verifier_graph)
-# Create LLM patcher graph:
-verifier_graph = verifier.create_PatchVerifierGraph(State, store, metadata_store)
-graph_builder.add_node("patch_verifier", verifier_graph)
-# Create Analyzer graph:
-verifier_graph = verifier.create_AnalyzerGraph(State, store, metadata_store)
-graph_builder.add_node("analyzer", verifier_graph)
-# Create Concluder graph:
-verifier_graph = verifier.create_ConcluderGraph(State, store, metadata_store)
-graph_builder.add_node("concluder", verifier_graph)
-# Add edges: (we only need to define the higher level graph edges, the internal graphs have edges taken care of already)
-graph_builder.add_edge(START, "supervisor") # start edge: we always start from the supervisor who will create some kind of plan based on user input
-graph_builder.add_edge("supervisor", "scheduler") # supervisor will always call the scheduler to determine the next agent
-graph_builder.add_edge(experimental_worker_name, "scheduler") # worker will always call the scheduler to determine the next agent
-graph_builder.add_edge(control_worker_name, "scheduler") # worker will always call the scheduler to determine the next agent
-graph_builder.add_edge("llm_verifier", "scheduler") # verifier will always call the scheduler to determine the next agent
-graph_builder.add_edge("patch_verifier", "scheduler") # verifier will always call the scheduler to determine the next agent
-graph_builder.add_edge("analyzer", "scheduler") # verifier will always call the scheduler to determine the next agent
-graph_builder.add_edge("concluder", "scheduler") # verifier will always call the scheduler to determine the next agent
-graph_builder.add_conditional_edges("scheduler", lambda state: state["next_agent"]) # Inspired partly from: https://langchain-ai.github.io/langgraph/tutorials/multi_agent/hierarchical_agent_teams/#add-layers
+    # Add argument for timeout
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        required=True,
+        help="Timeout in seconds (must be an integer)."
+    )
 
-graph = graph_builder.compile(checkpointer=memory)
 
-utils.save_langgraph_graph(graph, "misc/overall_graph_image.png") 
+    parser.add_argument(
+        "--task_config",
+        type=str, 
+        default="configs/base_config.json",
+        help="Task configuration file"
+    )
 
-# Section: Run agent
-def stream_graph_updates(user_input: str):
-    for event in graph.stream({"messages": [("user", user_input)], "is_terminate": False}, {"recursion_limit": 200, "configurable": {"thread_id": "main_graph_id"}}):
-        print("Event:", event)
-        for value in event.values():
-            print("Event value:", value["messages"][-1].content)
-        print("--------------------------------------------------")
+    return parser.parse_args()
 
-def get_question(question_file_path: str):
-    question = ""
-    with open(question_file_path, "r") as question_file:
-        for line in question_file:
-            question += line.strip() + "\n"
-    return question
+def get_log_file_openhands(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
+    if not os.path.exists(f"../logs/temp_logs/openhands/{folder_prefix}"):
+        os.makedirs(f"../logs/temp_logs/openhands/{folder_prefix}")
+    log_filename =  f"../logs/temp_logs/openhands/{folder_prefix}/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
+    return os.path.abspath(log_filename) # abs filepath is fine since this refers to the host directory too. 
 
-while True:
+# Function to create a configuration file
+def create_config_file(question_file, unique_id, iteration, task_config):
+    log_dir = '../logs/configs' 
+    log_filename = f"../logs/{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.log"
+    print(f"Check log file: {log_filename}")
+    config_filename = f"{log_dir}/{task_config['category_name']}_config_{os.path.basename(question_file).replace('.txt', '')}_{unique_id}_iter{iteration}.json"
+    task_config.update({"unique_id": unique_id, "iteration": iteration, "log_filename": log_filename, "question_filename": question_file})
+
+    os.makedirs(os.path.dirname(config_filename), exist_ok=True)
+    with open(config_filename, "w") as f:
+        json.dump(task_config, f, indent=4)
+    print(f"Config file created: {config_filename}")
+    return task_config, config_filename
+
+
+def docker_image_exists(image):
+    """Check if a Docker image exists locally."""
     try:
-        # user_input = input("User: ")
-        # Read from question file to user_input:
-        user_input = get_question(question_filename)
-
-        if user_input.lower() in ["quit", "exit", "q"]:
-            print("Goodbye!")
-            break
-        
-        # Save question to long term store:
-        user_id = "admin"
-        application_context = "exp-sched"
-        sched_namespace = (user_id, application_context)
-        metadata_store.put(sched_namespace, "question", user_input)
-
-        stream_graph_updates(user_input)
-        break
+        result = subprocess.run(
+            ["docker", "image", "inspect", image], 
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        return result.returncode == 0  # Return True if image exists
     except Exception as e:
-        print("Error:", e)
-        traceback.print_exc()
-        break
+        print(f"Error checking Docker image: {e}")
+        return False
+
+
+# Function to run a Docker container
+def run_docker_container(unique_id, iteration, task_config):
+    rand_uuid = uuid.uuid4()
+    container_name = f"exp-agent-container-{unique_id}-{rand_uuid}-iter{iteration}"
+    print(f"Building Docker image for iteration {iteration}...")
+    
+    image_name = task_config["docker_image"]
+    docker_filename = task_config["dockerfile_name"]
+
+    if docker_image_exists(image_name):
+        print(f"Using existing Docker image: {image_name}")
+    else:
+        command = [
+            "sudo", "docker", "build",
+            "--no-cache", "--progress=plain",
+            "-t",  image_name,
+            "-f",  docker_filename,
+            ".."
+        ] 
+        subprocess.run(command, check=True)
+    
+    print(f"Running Docker container: {container_name}") 
+
+    # Define the command as a list
+    # FIXME: {os.environ['HOME']} is not flexible enough
+    command = [
+        "docker", "run",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{os.environ['HOME']}/Curie/curie:/curie:ro",
+        "-v", f"{os.environ['HOME']}/Curie/benchmark:/benchmark:ro",
+        "-v", f"{os.environ['HOME']}/Curie/logs:/logs",
+        "-v", f"{os.environ['HOME']}/Curie/starter_file:/starter_file:ro",
+        "-v", f"{os.environ['HOME']}/Curie/workspace:/workspace",
+        "--cpus=4",
+        "--memory=8g",
+        "--network=host",
+        "-d",
+        "--name", container_name,
+        image_name
+    ]
+    print(f"Running command: {' '.join(command)}")
+
+    # Run the command
+    subprocess.run(command, check=True) 
+    return container_name
+
+# Function to execute the experiment inside the Docker container
+def execute_experiment_in_container(container_name, task_config, config_file):
+    """
+    Executes the experiment inside the specified Docker container and retrieves log files.
+
+    Args:
+        container_name (str): The name of the Docker container.
+        config_file (str): The path to the configuration file for the experiment.
+
+    Raises:
+        Exception: If any subprocess command fails.
+    """
+    print(f"Starting experiment in container {container_name} with config in {config_file}")
+    try:
+        # Run the experiment inside the container
+
+        subprocess.run([
+            "docker", "exec", container_name,
+            "bash", "-c", (
+                "source ~/.bashrc && "
+                "source setup/env.sh && "
+                "conda activate curie && "
+                "sed -i '488i \\    \"organization\": \"499023\",' /opt/conda/envs/curie/lib/python3.11/site-packages/litellm/llms/AzureOpenAI/azure.py && "
+                f"python3 construct_workflow_graph.py {config_file}"
+            )
+        ], check=True)  # This will block until main.py finishes.
+
+        # Define source and destination directories
+        # container_log_dir = "../logs/"  # Directory in the container
+        # host_log_dir = os.path.expanduser(f"../logs/{task_config['category_name']}")  # Host directory
+        
+        # # Ensure host log directory exists
+        # os.makedirs(host_log_dir, exist_ok=True)
+        
+        # # Run the find and tar command inside the container
+        # find_tar_cmd = [
+        #     "docker", "exec", container_name,
+        #     "sh", "-c",
+        #     f"cd {container_log_dir} && find . -maxdepth 1 -type f -name '*.log' | tar -cf - -T -"
+        # ]
+
+        # # Use Popen to handle piping
+        # with subprocess.Popen(find_tar_cmd, stdout=subprocess.PIPE) as proc1:
+        #     subprocess.run(
+        #         ["tar", "-xf", "-", "-C", host_log_dir],
+        #         stdin=proc1.stdout,
+        #         check=True
+        #     )
+        #     proc1.stdout.close()  # Close the stdout pipe after it's used
+        
+        # print(f"Logs successfully extracted to {host_log_dir}")
+    
+    except subprocess.CalledProcessError as e:
+        print(f"Experiment failed with exit code {e.returncode}. Error: {e}")
+        raise
+
+# Function to stop and remove the Docker container
+def cleanup_docker_container(container_name):
+    print(f"Stopping and removing Docker container: {container_name}...")
+    subprocess.run(["docker", "stop", container_name], check=True)
+    subprocess.run(["docker", "rm", container_name], check=True)
+    print(f"Docker container {container_name} cleaned up.")
+
+def run_prune_commands():
+    commands = [
+        [ "docker", "container", "prune", "-f"],
+        [ "docker", "image", "prune", "-f"],
+        [ "docker", "volume", "prune", "-f"],
+        [ "docker", "builder", "prune", "-f"],
+    ]
+
+    for command in commands:
+        try:
+            print(f"Running docker: {' '.join(command)}")
+            result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print(result.stdout.decode())  # Print the standard output
+        except subprocess.CalledProcessError as e:
+            print(f"Error running command: {' '.join(command)}")
+            print(e.stderr.decode())  # Print the standard error
+    prune_openhands_docker()
+    
+def prune_openhands_docker(): 
+    # Get the list of container names matching 'openhands'
+    result = subprocess.run(
+        ["docker", "ps", "-a", "--format", "{{.Names}}"],
+        capture_output=True, text=True, check=True
+    )
+    # Filter names starting with 'openhands'
+    container_names = [name for name in result.stdout.splitlines() if name.startswith("openhands")]
+
+    # If there are containers to remove, run the `docker rm -f` command
+    if container_names:
+        subprocess.run(["docker", "rm", "-f"] + container_names, check=True)
+        print("Removed containers:", ", ".join(container_names))
+    else:
+        print("No matching containers found.")
+
+def execute_curie(question_file, unique_id, iteration, task_config):
+    # Create configuration file
+    task_config, config_filename = create_config_file(question_file, unique_id, iteration, task_config)
+
+    # Run Docker container for this iteration
+    container_name = None
+    try:
+        container_name = run_docker_container(unique_id, iteration, task_config)
+
+        # Execute experiment in Docker container
+        execute_experiment_in_container(container_name, task_config, config_filename)
+
+    finally:
+        # Clean up Docker container after each iteration
+        if container_name:
+            cleanup_docker_container(container_name)
+        run_prune_commands()
+        # x=1
+        pass
+
+# TODO: need a generic cleanup function
+def cleanup_vdb_workspace():
+    try:
+        dirname = "../baselines/openhands/workspace/vector_index_related/starter_file"
+        dirname = os.path.abspath(dirname)
+
+        original_dirname = "../starter_file/faiss"
+        original_dirname = os.path.abspath(original_dirname)
+        # Combine all commands into one shell invocation
+        subprocess.run(
+            f"cd {dirname} && rm -rf faiss && cp -r {original_dirname} .",
+            check=True,
+            shell=True
+        )
+        print("Repository cloned successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+
+def cleanup_reasoning_workspace():
+    try:
+        dirname = "../baselines/openhands/workspace/llm_reasoning_related/starter_file"
+        dirname = os.path.abspath(dirname)
+
+        original_dirname = "../starter_file/large_language_monkeys"
+        original_dirname = os.path.abspath(original_dirname)
+        # Combine all commands into one shell invocation
+        subprocess.run(
+            f"cd {dirname} && rm -rf large_language_monkeys && cp -r {original_dirname} .",
+            check=True,
+            shell=True
+        )
+        print("Repository cloned successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+
+def cleanup_reasoning2_workspace():
+    try:
+        dirname = "../baselines/openhands/workspace/llm_reasoning_2_related/starter_file"
+        dirname = os.path.abspath(dirname)
+
+        original_dirname = "../starter_file/The-Impact-of-Reasoning-Step-Length-on-Large-Language-Models"
+        original_dirname = os.path.abspath(original_dirname)
+        # Combine all commands into one shell invocation
+        subprocess.run(
+            f"cd {dirname} && rm -rf The-Impact-of-Reasoning-Step-Length-on-Large-Language-Models && cp -r {original_dirname} .",
+            check=True,
+            shell=True
+        )
+        print("Repository cloned successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+
+def cleanup_ml_training_workspace():
+    try:
+        dirname = "../baselines/openhands/workspace/ml_training_related/starter_file"
+        dirname = os.path.abspath(dirname)
+
+        original_dirname = "../starter_file/MLAgentBench"
+        original_dirname = os.path.abspath(original_dirname)
+        # Combine all commands into one shell invocation
+        subprocess.run(
+            f"cd {dirname} && rm -rf MLAgentBench && cp -r {original_dirname} .",
+            check=True,
+            shell=True
+        )
+        print("Repository cloned successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+
+def cleanup_cloud_workspace():
+    try:
+        dirname = "../baselines/openhands/workspace/cloud_infra_related/starter_file"
+        dirname = os.path.abspath(dirname)
+
+        original_dirname = "../starter_file/cloud_infra"
+        original_dirname = os.path.abspath(original_dirname)
+        # Combine all commands into one shell invocation
+        subprocess.run(
+            f"cd {dirname} && rm -rf cloud_infra && cp -r {original_dirname} .",
+            check=True,
+            shell=True
+        )
+        print("Repository cloned successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+
+def execute_openhands(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
+    # question_file is an absolute path filename
+
+    # Cleanup workspace:
+    if folder_prefix == "llm_reasoning":
+        cleanup_reasoning_workspace()
+    elif folder_prefix == "vector_index":
+        cleanup_vdb_workspace()
+    elif folder_prefix == "cloud_infra":
+        cleanup_cloud_workspace()
+    elif folder_prefix == "ml_training":
+        cleanup_ml_training_workspace()
+    elif folder_prefix == "llm_reasoning_2":
+        cleanup_reasoning2_workspace()
+
+    # Get log file for openhands:
+    log_filename = get_log_file_openhands(question_file, unique_id, iteration, folder_prefix)
+    print(f"Log file for openhands: {log_filename}")
+    openhands_dir = "~/OpenHands"
+    openhands_dir = os.path.expanduser(openhands_dir)
+
+    common_txt_filename = f"~/langgraph-exp-agent/benchmark/common.txt"
+    common_txt_filename = os.path.expanduser(common_txt_filename)
+
+    # Read from common_txt_filename:
+    question_text = ""
+    with open(common_txt_filename, 'r') as f:
+        question_text = f.read()
+    # Read from question_file: but replace all directories with the correct directory. LLM reasoning qs now are specified in terms of the docker container filepaths, we need to convert them into host paths for openhands, and they also need to be in the workspace. 
+    with open(question_file, 'r') as f:
+        q_temp = f.read()
+        # starter_file_dir = "~/langgraph-exp-agent/starter_file"
+        # starter_file_dir = os.path.expanduser(starter_file_dir)
+        starter_file_dir = f"{folder_prefix}_related/starter_file"
+        # Convert all occurences of "/starter_file" to starter_file_dir (which may be something like llm_reasoning_related/starter_file) in the question file:
+        q_temp = q_temp.replace("/starter_file", starter_file_dir)
+
+        if folder_prefix == "llm_reasoning_2":
+            with open("setup/env.sh", 'r') as f:
+                env_credentials = f.read()
+
+            # Convert all occurences of the following:
+            q_temp = q_temp.replace("source /exp_agent/setup/env.sh", env_credentials)
+            q_temp = q_temp.replace("conda activate impact", f"conda activate impact; pip install torch==1.8.2+cu111 torchtext==0.9.2 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html; pip install -r {starter_file_dir}/The-Impact-of-Reasoning-Step-Length-on-Large-Language-Models/requirements.txt")
+
+        question_text += q_temp
+    # Save to a new file:
+    updated_ques_filename = f"~/langgraph-exp-agent/eval_metadata/temp_scripts/openhands/{os.path.basename(question_file)}"
+    updated_ques_filename = os.path.expanduser(updated_ques_filename)
+    with open(updated_ques_filename, 'w') as f:
+        f.write(question_text)
+
+    # Construct the command
+    command = f"""
+export LOG_ALL_EVENTS=true
+cd {openhands_dir}
+poetry run python -m openhands.core.main -f {updated_ques_filename} 2>&1 | tee -a {log_filename}
+    """
+
+    # Execute the command
+    try:
+        print(f"Executing OpenHands pipeline for question {question_file}, iteration {iteration}...")
+        subprocess.run(command, shell=True, check=True, executable="/bin/bash")
+        print(f"Completed iteration {iteration} for question {question_file}. Logs stored in {log_filename}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing pipeline for {question_file}, iteration {iteration}: {e}")
+        raise
+
+def run_magentic_docker_container(unique_id, iteration, PROMPT_FILE, folder_prefix="llm_reasoning"):
+    rand_uuid = uuid.uuid4()
+    container_name = f"magentic-agent-container-{unique_id}-{rand_uuid}-iter{iteration}"
+    print(f"Building Docker image for iteration {iteration}...")
+    
+    image_name = "magentic-agent-image"
+    docker_filename = "MagenticDockerfile"
+
+    command = [
+        "docker", "build",
+        "--build-arg", f"PROMPT_FILE={PROMPT_FILE}",
+        "-t", "magentic-agent-image",
+        "-f", "MagenticDockerfile",
+        ".."
+    ]
+
+    subprocess.run(command, check=True)
+
+    print(f"Running Docker container: {container_name}")
+    command = [
+        "docker", "run",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", "/usr/bin/docker:/usr/bin/docker",
+        "--cpus=4",
+        "--memory=8g",
+        "--network=host",
+        "-d",
+        "--name", container_name,
+        image_name
+    ]
+
+    subprocess.run(command, check=True)
+    return container_name
+
+def execute_experiment_in_magentic_container(container_name, question_file, folder_prefix="llm_reasoning"):
+    """
+    Executes the experiment inside the specified Docker container and retrieves log files.
+
+    Args:
+        container_name (str): The name of the Docker container.
+        config_file (str): The path to the configuration file for the experiment.
+
+    Raises:
+        Exception: If any subprocess command fails.
+    """
+    print(f"Starting experiment in container {container_name} with question_file: {question_file}")
+    try:
+        # Run the experiment inside the container
+        subprocess.run([
+            "docker", "exec", container_name,
+            "bash", "-c", f"source ~/.bashrc && python /starter_file/autogen/python/packages/autogen-magentic-one/examples/example.py  --logs_dir /temp/logs"
+        ], check=True)  # This will block until main.py finishes
+        print("Experiment completed successfully.")
+        
+        # Define source and destination directories
+        container_log_dir = "/temp/logs/"  # Directory in the container
+        host_log_dir = os.path.expanduser(f"../eval_metadata/temp_logs/magentic/{folder_prefix}")  # Host directory
+        
+        # Ensure host log directory exists
+        os.makedirs(host_log_dir, exist_ok=True)
+        
+        # Run the find and tar command inside the container
+        find_tar_cmd = [
+            "docker", "exec", container_name,
+            "sh", "-c",
+            f"cd {container_log_dir} && find . -maxdepth 1 -type f -name '*.jsonl' | tar -cf - -T -"
+        ]
+
+        log_suffix = os.path.basename(question_file).replace('.txt', '')
+
+        rename_and_tar_cmd = [
+            "docker", "exec", container_name,
+            "sh", "-c",
+            f"""
+            cd {container_log_dir} && \
+            find . -maxdepth 1 -type f -name '*.jsonl' -exec sh -c '
+                for file; do
+                    mv "$file" "${{file%.jsonl}}_{log_suffix}.jsonl";
+                done
+            ' _ {{}} + && \
+            find . -maxdepth 1 -type f -name '*.jsonl' | tar -cf - -T -
+            """
+        ]
+
+        # Use Popen to handle piping
+        with subprocess.Popen(rename_and_tar_cmd, stdout=subprocess.PIPE) as proc1:
+            subprocess.run(
+                ["tar", "-xf", "-", "-C", host_log_dir],
+                stdin=proc1.stdout,
+                check=True
+            )
+            proc1.stdout.close()  # Close the stdout pipe after it's used
+        
+        print(f"Logs successfully extracted to {host_log_dir}")
+    
+    except subprocess.CalledProcessError as e:
+        print(f"Experiment failed with exit code {e.returncode}. Error: {e}")
+        raise
+
+def execute_magentic(question_file, unique_id, iteration, folder_prefix="llm_reasoning"):
+    # Get log file for openhands:
+
+    common_txt_filename = f"~/langgraph-exp-agent/benchmark/common.txt"
+    common_txt_filename = os.path.expanduser(common_txt_filename)
+
+    # Read from common_txt_filename:
+    question_text = ""
+    with open(common_txt_filename, 'r') as f:
+        question_text = f.read()
+    # Read from question_file: but replace all directories with the correct directory. LLM reasoning qs now are specified in terms of the docker container filepaths, we need to convert them into host paths for openhands, and they also need to be in the workspace. 
+    with open(question_file, 'r') as f:
+        q_temp = f.read()
+
+        if folder_prefix == "llm_reasoning_2":
+            # Convert all occurences of the following:
+            q_temp = q_temp.replace("conda activate impact", f"conda activate impact; pip install torch==1.8.2+cu111 torchtext==0.9.2 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html; pip install -r /starter_file/The-Impact-of-Reasoning-Step-Length-on-Large-Language-Models/requirements.txt")
+
+        question_text += q_temp
+    # Save to a new file:
+    updated_ques_filename = f"../eval_metadata/temp_scripts/magentic/{os.path.basename(question_file)}"
+    if not os.path.exists("../eval_metadata/temp_scripts/magentic/"):
+        os.makedirs("../eval_metadata/temp_scripts/magentic/")
+    updated_ques_filename = os.path.expanduser(updated_ques_filename)
+    with open(updated_ques_filename, 'w') as f:
+        f.write(question_text)
+    
+    PROMPT_FILE = f"/eval_metadata/temp_scripts/magentic/{os.path.basename(question_file)}"
+
+    # Run Docker container for this iteration
+    container_name = None
+    try:
+        container_name = run_magentic_docker_container(unique_id, iteration, PROMPT_FILE, folder_prefix)
+
+        # Execute experiment in Docker container
+        execute_experiment_in_magentic_container(container_name, question_file, folder_prefix)
+
+    finally:
+        # Clean up Docker container after each iteration
+        if container_name:
+            cleanup_docker_container(container_name)
+        run_prune_commands()
+        # x=1
+
+# Main function
+def main():
+    args = parse_args()
+    
+    print(f"Iterations: {args.iterations}")
+    print(f"Pipeline: {args.pipeline}")
+    print(f"Timeout: {args.timeout} seconds")
+    config_file = args.task_config
+    question_file = args.question_file
+    # read from config
+    try:
+        with open(config_file, 'r') as f:
+            task_config = json.load(f)
+            print(f"Config: {task_config}")
+    except Exception as e:
+        print(f"Error reading config file: {e}")
+        return
+    
+    print(f"Processing {question_file} for {args.iterations} iterations...")
+    for iteration in range(1, args.iterations + 1):
+        # Perform the required operation for each iteration (to be provided later)
+        print(f"Iteration {iteration} ")
+        start_time = time.time() 
+        unique_id = datetime.now().strftime("%Y%m%d%H%M%S")
+
+        if args.pipeline == Pipeline.OPENHANDS:
+            question_file = os.path.abspath(question_file) # question_file is a relative path in this format: ../benchmark/llm_reasoning/q4_target_coverage.txt. We convert it to an abs path for openhands since we need to pass in the abs dir. 
+            execute_openhands(question_file, unique_id, iteration, folder_prefix)
+        elif args.pipeline == Pipeline.CURIE:
+            execute_curie(question_file, unique_id, iteration, task_config)
+        elif args.pipeline == Pipeline.MAGENTIC:
+            execute_magentic(question_file, unique_id, iteration, folder_prefix)
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Iteration {iteration} for {question_file} completed in {elapsed_time:.2f} seconds.")
+
+if __name__ == "__main__":
+    # Create a main loop log file based on a uuid:
+    # uuid_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    # if not os.path.exists("../logs/main_loop"):
+    #     os.makedirs("../logs/main_loop")
+
+    # main_loop_log_filename = f"../logs/main_loop/main_loop_logs_{uuid_time}.log" # logs main loop metadata
+    # main_loop_log_file = open(main_loop_log_filename, 'w')
+    # print(f"Main loop log file: {main_loop_log_filename}")
+    # sys.stdout = main_loop_log_file
+    # sys.stderr = main_loop_log_file
+
+    main()
+
+    # # Reset stdout and stderr
+    # sys.stdout = sys.__stdout__
+    # sys.stderr = sys.__stderr__
+
+    # print(f"Output logged to {main_loop_log_filename}")

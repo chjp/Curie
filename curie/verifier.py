@@ -107,7 +107,7 @@ def create_Verifier(tools, system_prompt_file, State, node_name):
         if not any(isinstance(msg, SystemMessage) for msg in messages):
             messages.insert(0, system_message)
         
-        response = gpt_4_llm.invoke(messages)
+        response = model.query_model_safe(messages)
         print(f"FROM {node_name}:")
         print(utils.parse_langchain_llm_output(response))
         print("-----------------------------------")
