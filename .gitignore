@@ -11,4 +11,5 @@ baselines/openhands/workspace
 baselines/autobuild/.OAI_CONFIG_LIST
 curie/setup/env.sh
 workspace/*
+curie.egg-info/
 baselines/openhands/config.toml

@@ -34,8 +34,8 @@ Config `curie/configs/base_config.json`
 ### Start experiments:
 - [ ] change the execution path to its parent
 ```bash
-cd Curie/curie
-python3 main_loop.py --iterations 1 --pipeline curie --timeout 600 --question_file ../benchmark/llm_reasoning/q1_simple_relation.txt --task_config configs/base_config.json
+cd Curie
+python3 -m curie.main --iterations 1 --pipeline curie --timeout 600 --question_file benchmark/llm_reasoning/q1_simple_relation.txt --task_config curie/configs/base_config.json
 ```
 
 To clean up the dockers
