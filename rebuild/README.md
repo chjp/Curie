@@ -72,8 +72,6 @@ graph TD
     
     class Main,Exp,Arch,Work,Val,Rep component;
     class Q,Plan,StepRes,Report data;
-
-end
 ```
 
 ## Usage
